@@ -48,6 +48,7 @@ import { TableBlockFilterPill } from './table-block-filter-pill';
 import { TableBlockGalleryItem } from './table-block-gallery-item';
 import { TableBlockListItem } from './table-block-list-item';
 import { TableBlockTable } from './table-block-table';
+import { DraggableItemWrapper } from './draggable-item-wrapper';
 
 interface Props {
   spaceId: string;
@@ -293,6 +294,19 @@ export const TableBlock = ({ spaceId }: Props) => {
   });
 
   const hasPagination = hasPreviousPage || hasNextPage;
+
+  const handleReorderItems = (oldIndex: number, newIndex: number) => {
+    // Don't allow reordering if we're not in a state where we can edit
+    if (!isEditing || !canEdit) return;
+    
+    // For now, this is a placeholder. In a real implementation, you'd need to:
+    // 1. Update the order in your data model
+    // 2. Persist the changes to your backend
+    // 3. Optimistically update the UI
+    console.log(`Moving item from position ${oldIndex} to ${newIndex}`);
+    
+    // The actual implementation would depend on your data model and backend
+  };
 
   let EntriesComponent = (
     <TableBlockTable
