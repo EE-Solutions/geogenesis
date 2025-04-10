@@ -1,8 +1,9 @@
 'use client';
 
-import { GraphUrl, SystemIds } from '@graphprotocol/grc-20';
+import { GraphUrl, SystemIds, Relation as R } from '@graphprotocol/grc-20';
 import { Image } from '@graphprotocol/grc-20';
 import { INITIAL_RELATION_INDEX_VALUE } from '@graphprotocol/grc-20/constants';
+import { Reorder } from 'framer-motion';
 
 import * as React from 'react';
 
@@ -43,6 +44,7 @@ import { Text } from '~/design-system/text';
 import { DateFormatDropdown } from './date-format-dropdown';
 import { getRenderableTypeSelectorOptions } from './get-renderable-type-options';
 import { RenderableTypeDropdown } from './renderable-type-dropdown';
+import { useQueryEntities } from '~/core/sync/use-store';
 
 interface Props {
   triples: ITriple[];
@@ -239,185 +241,305 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
   const typeOfName = relations[0].attributeName;
   const typeOfRenderableType = relations[0].type;
   const property = properties?.[typeOfId];
-  const filterByTypes = property?.relationValueTypes?.map(r => r.typeId);
+  const filterByTypes = property?.relationValueTypes?.map(r => r.typeId);    
+
+  const [relationItems, setRelationItems] = React.useState<RelationRenderableProperty[]>(relations);
+  const [relationIndices, setRelationIndices] = React.useState<Record<string, string>>({});
+  
+  const { entities: collectionItems, isLoading: isCollectionItemsLoading } = useQueryEntities({
+    enabled: relations !== null,
+    where: {
+      id: {
+        in: relationItems.map(r => r.relationId),
+      },
+    },
+  });
+
+  React.useEffect(() => {
+    setRelationItems(relations);
+  }, [relations]);
+
+  React.useEffect(() => {
+    if (!isCollectionItemsLoading && collectionItems) {
+      // Create an object mapping relation IDs to their index values
+      const indicesMap: Record<string, string> = {};
+      
+      collectionItems.forEach((entity) => {
+        const indexTriple = entity.triples.find(t => t.attributeId === SystemIds.RELATION_INDEX);
+        if (indexTriple && indexTriple.value && indexTriple.value.value) {
+          indicesMap[entity.id] = indexTriple.value.value;
+        }
+      });
+
+      setRelationIndices(indicesMap);
+      
+      // Sort relationItems by their string index values
+      const sortedRelationItems = [...relationItems].sort((a, b) => {
+        const indexA = indicesMap[a.relationId] || '';
+        const indexB = indicesMap[b.relationId] || '';
+        
+        // String comparison - this will properly sort lexicographically
+        return indexA.localeCompare(indexB, undefined, { numeric: true });
+      });
+      
+      // Only update if the order has changed
+      if (JSON.stringify(sortedRelationItems.map(item => item.relationId)) !== 
+          JSON.stringify(relationItems.map(item => item.relationId))) {
+        setRelationItems(sortedRelationItems);
+      }
+    }
+  }, [collectionItems, isCollectionItemsLoading, relationItems]);
+
+  const handleReorder = (reorderedItems: RelationRenderableProperty[]) => {
+    setRelationItems(reorderedItems);
+    
+    // Update the relation indices in the database based on the new order
+    reorderedItems.forEach((item, index) => {
+      // Find the relations before and after the current item
+      const beforeItem = index > 0 ? reorderedItems[index - 1] : undefined;
+      const afterItem = index < reorderedItems.length - 1 ? reorderedItems[index + 1] : undefined;
+      
+      // Get the index values for the items before and after the current item
+      const beforeIndex = beforeItem ? relationIndices[beforeItem.relationId] : undefined;
+      const afterIndex = afterItem ? relationIndices[afterItem.relationId] : undefined;
+      
+      // Drop afterIndex if it equals beforeIndex to avoid collisions
+      const finalAfterIndex = beforeIndex === afterIndex ? undefined : afterIndex;
+
+      // Use R.reorder to calculate the new index value
+      const newTripleOrdering = R.reorder({
+        relationId: item.relationId,
+        beforeIndex: beforeIndex,
+        afterIndex: finalAfterIndex,
+      });
+
+      console.log(`New triple ordering for ${item.relationId}:`, newTripleOrdering);
+      
+      // Update the index in the database
+      DB.upsert({
+        entityId: item.relationId,
+        attributeId: SystemIds.RELATION_INDEX,
+        attributeName: 'Index',
+        entityName: null,
+        value: newTripleOrdering.triple.value,
+      }, spaceId);
+      
+      // Update the local indices map
+      setRelationIndices(prev => ({
+        ...prev,
+        [item.relationId]: newTripleOrdering.triple.value.value
+      }));
+    });
+  };
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {relations.map(r => {
-        const relationId = r.relationId;
-        const relationName = r.valueName;
-        const renderableType = r.type;
-        const relationValue = r.value;
 
-        if (renderableType === 'IMAGE' && r.placeholder === true) {
-          return (
-            <div key={`relation-upload-image-${relationId}`}>
-              <PageImageField
-                onImageChange={imageSrc => {
-                  const { id: imageId, ops } = Image.make({ cid: imageSrc });
-                  const [createRelationOp, setTripleOp] = ops;
+      <Reorder.Group 
+        as="span" 
+        axis="x" 
+        values={relationItems} 
+        onReorder={handleReorder}
+        className="flex flex-wrap gap-2 items-center"
+      >
+        {relationItems.map((r) => {
+          const relationId = r.relationId;
+          const relationName = r.valueName;
+          const renderableType = r.type;
+          const relationValue = r.value;
 
-                  if (createRelationOp.type === 'CREATE_RELATION') {
-                    send({
-                      type: 'UPSERT_RELATION',
-                      payload: {
-                        fromEntityId: createRelationOp.relation.fromEntity,
-                        fromEntityName: name,
-                        toEntityId: createRelationOp.relation.toEntity,
-                        toEntityName: null,
-                        typeOfId: createRelationOp.relation.type,
-                        typeOfName: 'Types',
-                      },
-                    });
-                  }
+          if (renderableType === 'IMAGE' && r.placeholder === true) {
+            return (
+              <div key={`relation-upload-image-${relationId}`}>
+                <PageImageField
+                  onImageChange={imageSrc => {
+                    const { id: imageId, ops } = Image.make({ cid: imageSrc });
+                    const [createRelationOp, setTripleOp] = ops;
 
-                  if (setTripleOp.type === 'SET_TRIPLE') {
-                    DB.upsert(
-                      {
-                        value: {
-                          type: 'URL',
-                          value: setTripleOp.triple.value.value,
+                    if (createRelationOp.type === 'CREATE_RELATION') {
+                      send({
+                        type: 'UPSERT_RELATION',
+                        payload: {
+                          fromEntityId: createRelationOp.relation.fromEntity,
+                          fromEntityName: name,
+                          toEntityId: createRelationOp.relation.toEntity,
+                          toEntityName: null,
+                          typeOfId: createRelationOp.relation.type,
+                          typeOfName: 'Types',
                         },
-                        entityId: imageId,
-                        attributeId: setTripleOp.triple.attribute,
-                        entityName: null,
-                        attributeName: 'Image URL',
-                      },
-                      spaceId
-                    );
+                      });
+                    }
 
-                    send({
-                      type: 'UPSERT_RELATION',
-                      payload: {
-                        fromEntityId: id,
-                        fromEntityName: name,
-                        toEntityId: imageId,
-                        toEntityName: null,
-                        typeOfId: r.attributeId,
-                        typeOfName: r.attributeName,
-                        renderableType: 'IMAGE',
-                        value: setTripleOp.triple.value.value,
-                      },
-                    });
-                  }
-                }}
-                onImageRemove={() => console.log(`remove`)}
-              />
-            </div>
-          );
-        }
-
-        if (renderableType === 'IMAGE') {
-          return <ImageZoom key={`image-${relationId}-${relationValue}`} imageSrc={getImagePath(relationValue)} />;
-        }
-
-        if (renderableType === 'RELATION' && r.placeholder === true) {
-          return (
-            <div key={`relation-select-entity-${relationId}`} data-testid="select-entity" className="w-full">
-              <SelectEntity
-                spaceId={spaceId}
-                allowedTypes={filterByTypes ? filterByTypes : undefined}
-                onCreateEntity={result => {
-                  if (property?.relationValueTypeId) {
-                    send({
-                      type: 'UPSERT_RELATION',
-                      payload: {
-                        fromEntityId: result.id,
-                        fromEntityName: result.name,
-                        toEntityId: property.relationValueTypeId,
-                        toEntityName: property.relationValueTypeName ?? null,
-                        typeOfId: SystemIds.TYPES_ATTRIBUTE,
-                        typeOfName: 'Types',
-                      },
-                    });
-                  }
-                }}
-                onDone={result => {
-                  const newRelationId = ID.createEntityId();
-
-                  const newRelation: StoreRelation = {
-                    id: newRelationId,
-                    space: spaceId,
-                    index: INITIAL_RELATION_INDEX_VALUE,
-                    typeOf: {
-                      id: EntityId(r.attributeId),
-                      name: r.attributeName,
-                    },
-                    fromEntity: {
-                      id: EntityId(id),
-                      name: name,
-                    },
-                    toEntity: {
-                      id: EntityId(result.id),
-                      name: result.name,
-                      renderableType: 'RELATION',
-                      value: EntityId(result.id),
-                    },
-                  };
-
-                  DB.upsertRelation({
-                    relation: newRelation,
-                    spaceId,
-                  });
-
-                  if (result.space) {
-                    DB.upsert(
-                      {
-                        attributeId: SystemIds.RELATION_TO_ATTRIBUTE,
-                        attributeName: 'To Entity',
-                        entityId: newRelationId,
-                        entityName: null,
-                        value: {
-                          type: 'URL',
-                          value: GraphUrl.fromEntityId(result.id, { spaceId: result.space }),
-                        },
-                      },
-                      spaceId
-                    );
-
-                    if (result.verified) {
+                    if (setTripleOp.type === 'SET_TRIPLE') {
                       DB.upsert(
                         {
-                          attributeId: SystemIds.VERIFIED_SOURCE_ATTRIBUTE,
-                          attributeName: 'Verified Source',
+                          value: {
+                            type: 'URL',
+                            value: setTripleOp.triple.value.value,
+                          },
+                          entityId: imageId,
+                          attributeId: setTripleOp.triple.attribute,
+                          entityName: null,
+                          attributeName: 'Image URL',
+                        },
+                        spaceId
+                      );
+
+                      send({
+                        type: 'UPSERT_RELATION',
+                        payload: {
+                          fromEntityId: id,
+                          fromEntityName: name,
+                          toEntityId: imageId,
+                          toEntityName: null,
+                          typeOfId: r.attributeId,
+                          typeOfName: r.attributeName,
+                          renderableType: 'IMAGE',
+                          value: setTripleOp.triple.value.value,
+                        },
+                      });
+                    }
+                  }}
+                  onImageRemove={() => console.log(`remove`)}
+                />
+              </div>
+            );
+          }
+
+          if (renderableType === 'IMAGE') {
+            return <ImageZoom key={`image-${relationId}-${relationValue}`} imageSrc={getImagePath(relationValue)} />;
+          }
+
+          if (renderableType === 'RELATION' && r.placeholder === true) {
+            return (
+              <div key={`relation-select-entity-${relationId}`} data-testid="select-entity" className="w-full">
+                <SelectEntity
+                  spaceId={spaceId}
+                  allowedTypes={filterByTypes ? filterByTypes : undefined}
+                  onCreateEntity={result => {
+                    if (property?.relationValueTypeId) {
+                      send({
+                        type: 'UPSERT_RELATION',
+                        payload: {
+                          fromEntityId: result.id,
+                          fromEntityName: result.name,
+                          toEntityId: property.relationValueTypeId,
+                          toEntityName: property.relationValueTypeName ?? null,
+                          typeOfId: SystemIds.TYPES_ATTRIBUTE,
+                          typeOfName: 'Types',
+                        },
+                      });
+                    }
+                  }}
+                  onDone={result => {
+                    const newRelationId = ID.createEntityId();
+
+                    const newRelation: StoreRelation = {
+                      id: newRelationId,
+                      space: spaceId,
+                      index: INITIAL_RELATION_INDEX_VALUE,
+                      typeOf: {
+                        id: EntityId(r.attributeId),
+                        name: r.attributeName,
+                      },
+                      fromEntity: {
+                        id: EntityId(id),
+                        name: name,
+                      },
+                      toEntity: {
+                        id: EntityId(result.id),
+                        name: result.name,
+                        renderableType: 'RELATION',
+                        value: EntityId(result.id),
+                      },
+                    };
+
+                    DB.upsertRelation({
+                      relation: newRelation,
+                      spaceId,
+                    });
+
+                    if (result.space) {
+                      DB.upsert(
+                        {
+                          attributeId: SystemIds.RELATION_TO_ATTRIBUTE,
+                          attributeName: 'To Entity',
                           entityId: newRelationId,
                           entityName: null,
                           value: {
-                            type: 'CHECKBOX',
-                            value: '1',
+                            type: 'URL',
+                            value: GraphUrl.fromEntityId(result.id, { spaceId: result.space }),
                           },
                         },
                         spaceId
                       );
-                    }
-                  }
-                }}
-                variant="fixed"
-              />
-            </div>
-          );
-        }
 
-        return (
-          <div key={`relation-${relationId}-${relationValue}`} className="mt-1">
-            <LinkableRelationChip
-              isEditing
-              onDelete={() => {
-                send({
-                  type: 'DELETE_RELATION',
-                  payload: {
-                    renderable: r,
-                  },
-                });
-              }}
-              entityHref={NavUtils.toEntity(spaceId, relationValue ?? '')}
-              relationHref={NavUtils.toEntity(spaceId, relationId)}
-            >
-              {relationName ?? relationValue}
-            </LinkableRelationChip>
-          </div>
-        );
-      })}
+                      if (result.verified) {
+                        DB.upsert(
+                          {
+                            attributeId: SystemIds.VERIFIED_SOURCE_ATTRIBUTE,
+                            attributeName: 'Verified Source',
+                            entityId: newRelationId,
+                            entityName: null,
+                            value: {
+                              type: 'CHECKBOX',
+                              value: '1',
+                            },
+                          },
+                          spaceId
+                        );
+                      }
+                    }
+                  }}
+                  variant="fixed"
+                />
+              </div>
+            );
+          }
+
+          if (renderableType === 'RELATION') {
+            return (
+              <Reorder.Item
+                drag
+                key={relationId}
+                value={r}
+                as="span"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ 
+                  opacity: 1, 
+                  scale: 1,
+                  transition: { 
+                    type: 'spring',
+                    stiffness: 300, 
+                    damping: 20 
+                  } 
+                }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                style={{ touchAction: 'none' }}
+              >
+                  <LinkableRelationChip
+                    isEditing
+                    onDelete={() => {
+                      send({
+                        type: 'DELETE_RELATION',
+                        payload: {
+                          renderable: r,
+                        },
+                      });
+                    }}
+                    entityHref={NavUtils.toEntity(spaceId, relationValue ?? '')}
+                    relationHref={NavUtils.toEntity(spaceId, relationId)}
+                  >
+                    {relationName ?? relationValue}
+                  </LinkableRelationChip>
+              </Reorder.Item>
+            );
+          }
+
+          return null;
+        })}
+      </Reorder.Group>
+      
       {!hasPlaceholders && typeOfRenderableType === 'RELATION' && (
         <div className="mt-1">
           <SelectEntityAsPopover
