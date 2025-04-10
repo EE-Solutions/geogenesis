@@ -1,8 +1,9 @@
 'use client';
 
-import { GraphUrl, SystemIds } from '@graphprotocol/grc-20';
+import { GraphUrl, SystemIds, Relation as R } from '@graphprotocol/grc-20';
 import { Image } from '@graphprotocol/grc-20';
 import { INITIAL_RELATION_INDEX_VALUE } from '@graphprotocol/grc-20/constants';
+import { Reorder } from 'framer-motion';
 
 import * as React from 'react';
 
@@ -44,6 +45,7 @@ import { DateFormatDropdown } from './date-format-dropdown';
 import { getRenderableTypeSelectorOptions } from './get-renderable-type-options';
 import { NumberOptionsDropdown } from './number-options-dropdown';
 import { RenderableTypeDropdown } from './renderable-type-dropdown';
+import { useQueryEntities } from '~/core/sync/use-store';
 
 interface Props {
   triples: ITriple[];
@@ -262,19 +264,117 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
   const typeOfRenderableType = relations[0].type;
   const property = properties?.[typeOfId];
   const relationValueTypes = property?.relationValueTypes;
+  const filterByTypes = property?.relationValueTypes?.map(r => r.typeId);    
+
+  const [relationItems, setRelationItems] = React.useState<RelationRenderableProperty[]>(relations);
+  const [relationIndices, setRelationIndices] = React.useState<Record<string, string>>({});
+  
+  const { entities: collectionItems, isLoading: isCollectionItemsLoading } = useQueryEntities({
+    enabled: relations !== null,
+    where: {
+      id: {
+        in: relationItems.map(r => r.relationId),
+      },
+    },
+  });
+
+  React.useEffect(() => {
+    setRelationItems(relations);
+  }, [relations]);
+
+  React.useEffect(() => {
+    if (!isCollectionItemsLoading && collectionItems) {
+      // Create an object mapping relation IDs to their index values
+      const indicesMap: Record<string, string> = {};
+      
+      collectionItems.forEach((entity) => {
+        const indexTriple = entity.triples.find(t => t.attributeId === SystemIds.RELATION_INDEX);
+        if (indexTriple && indexTriple.value && indexTriple.value.value) {
+          indicesMap[entity.id] = indexTriple.value.value;
+        }
+      });
+
+      setRelationIndices(indicesMap);
+      
+      // Sort relationItems by their string index values
+      const sortedRelationItems = [...relationItems].sort((a, b) => {
+        const indexA = indicesMap[a.relationId] || '';
+        const indexB = indicesMap[b.relationId] || '';
+        
+        // String comparison - this will properly sort lexicographically
+        return indexA.localeCompare(indexB, undefined, { numeric: true });
+      });
+      
+      // Only update if the order has changed
+      if (JSON.stringify(sortedRelationItems.map(item => item.relationId)) !== 
+          JSON.stringify(relationItems.map(item => item.relationId))) {
+        setRelationItems(sortedRelationItems);
+      }
+    }
+  }, [collectionItems, isCollectionItemsLoading, relationItems]);
+
+  const handleReorder = (reorderedItems: RelationRenderableProperty[]) => {
+    setRelationItems(reorderedItems);
+    
+    // Update the relation indices in the database based on the new order
+    reorderedItems.forEach((item, index) => {
+      // Find the relations before and after the current item
+      const beforeItem = index > 0 ? reorderedItems[index - 1] : undefined;
+      const afterItem = index < reorderedItems.length - 1 ? reorderedItems[index + 1] : undefined;
+      
+      // Get the index values for the items before and after the current item
+      const beforeIndex = beforeItem ? relationIndices[beforeItem.relationId] : undefined;
+      const afterIndex = afterItem ? relationIndices[afterItem.relationId] : undefined;
+      
+      // Drop afterIndex if it equals beforeIndex to avoid collisions
+      const finalAfterIndex = beforeIndex === afterIndex ? undefined : afterIndex;
+
+      // Use R.reorder to calculate the new index value
+      const newTripleOrdering = R.reorder({
+        relationId: item.relationId,
+        beforeIndex: beforeIndex,
+        afterIndex: finalAfterIndex,
+      });
+
+      console.log(`New triple ordering for ${item.relationId}:`, newTripleOrdering);
+      
+      // Update the index in the database
+      DB.upsert({
+        entityId: item.relationId,
+        attributeId: SystemIds.RELATION_INDEX,
+        attributeName: 'Index',
+        entityName: null,
+        value: newTripleOrdering.triple.value,
+      }, spaceId);
+      
+      // Update the local indices map
+      setRelationIndices(prev => ({
+        ...prev,
+        [item.relationId]: newTripleOrdering.triple.value.value
+      }));
+    });
+  };
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {relations.map(r => {
-        const relationId = r.relationId;
-        const relationName = r.valueName;
-        const renderableType = r.type;
-        const relationValue = r.value;
 
-        if (renderableType === 'IMAGE' && r.placeholder === true) {
-          return (
-            <div key={`relation-upload-image-${relationId}`}>
-              <PageImageField
+      <Reorder.Group 
+        as="span" 
+        axis="x" 
+        values={relationItems} 
+        onReorder={handleReorder}
+        className="flex flex-wrap gap-2 items-center"
+      >
+        {relationItems.map((r) => {
+          const relationId = r.relationId;
+          const relationName = r.valueName;
+          const renderableType = r.type;
+          const relationValue = r.value;
+
+          if (renderableType === 'IMAGE' && r.placeholder === true) {
+            return (
+              <div key={`relation-upload-image-${relationId}`}>
+                <PageImageField
                 onImageChange={imageSrc => {
                   const { id: imageId, ops } = Image.make({ cid: imageSrc });
                   const [createRelationOp, setTripleOp] = ops;
@@ -417,30 +517,49 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
                 }}
                 variant="fixed"
               />
-            </div>
-          );
-        }
-
-        return (
-          <div key={`relation-${relationId}-${relationValue}`} className="mt-1">
-            <LinkableRelationChip
-              isEditing
-              onDelete={() => {
-                send({
-                  type: 'DELETE_RELATION',
-                  payload: {
-                    renderable: r,
-                  },
-                });
+              </div>
+            );
+          }
+ 
+          return (
+            <Reorder.Item
+              drag
+              key={relationId}
+              value={r}
+              as="span"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ 
+                opacity: 1, 
+                scale: 1,
+                transition: { 
+                  type: 'spring',
+                  stiffness: 300, 
+                  damping: 20 
+                } 
               }}
-              entityHref={NavUtils.toEntity(spaceId, relationValue ?? '')}
-              relationHref={NavUtils.toEntity(spaceId, relationId)}
+              exit={{ opacity: 0, scale: 0.8 }}
+              style={{ touchAction: 'none' }}
             >
-              {relationName ?? relationValue}
-            </LinkableRelationChip>
-          </div>
-        );
-      })}
+                <LinkableRelationChip
+                  isEditing
+                  onDelete={() => {
+                    send({
+                      type: 'DELETE_RELATION',
+                      payload: {
+                        renderable: r,
+                      },
+                    });
+                  }}
+                  entityHref={NavUtils.toEntity(spaceId, relationValue ?? '')}
+                  relationHref={NavUtils.toEntity(spaceId, relationId)}
+                >
+                  {relationName ?? relationValue}
+                </LinkableRelationChip>
+            </Reorder.Item>
+          );
+        })}
+      </Reorder.Group>
+      
       {!hasPlaceholders && typeOfRenderableType === 'RELATION' && (
         <div className="mt-1">
           <SelectEntityAsPopover
