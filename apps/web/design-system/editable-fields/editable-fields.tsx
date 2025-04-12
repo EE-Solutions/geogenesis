@@ -340,3 +340,96 @@ export function TableImageField({ imageSrc, onImageChange, onImageRemove, varian
     </div>
   );
 }
+
+export function GeoLocationPointFields({ ...props }: PageStringFieldProps) {
+  const [localValue, setLocalValue] = React.useState(props.value || '');
+  const [browserMode, setBrowseMode] = React.useState(false);
+  const [pointValues, setPointsValues] = React.useState({
+    latitude: props.value?.split(',')[0]?.replaceAll(' ', ''),
+    longitude: props.value?.split(',')[1]?.replaceAll(' ', ''),
+  });
+
+  const validNumberPattern = /^\d*\.?\d*$/;
+
+  const handlePointValueChange = (label: string, newValue: string) => {
+    if (newValue === '' || validNumberPattern.test(newValue)) {
+      setPointsValues(prev => ({
+        ...prev,
+        [label]: newValue,
+      }));
+    }
+  };
+
+  useEffect(() => {
+    setLocalValue(`${pointValues.latitude} , ${pointValues.longitude}`);
+    debouncedCallback(`${pointValues.latitude} , ${pointValues.longitude}`);
+  }, [pointValues]);
+
+  const { onChange } = props;
+
+  useEffect(() => {
+    // Update local value if value prop changes from outside the component
+    setLocalValue(props.value || '');
+  }, [props.value]);
+
+  // Apply debounce effect
+  const debouncedCallback = debounce((value: string) => {
+    onChange(value);
+  }, 1000);
+
+  // Handle browse mode
+  const handleBrowseMode = () => {
+    setBrowseMode(prev => !prev);
+  };
+
+  return (
+    <div className="flex w-full flex-col gap-4">
+      <div className="mt-[3px] flex w-full justify-between  leading-[29px]">
+        <div className="flex items-center gap-5">
+          <div className="flex items-center gap-2">
+            <label className="text-[19px] text-bodySemibold font-normal text-text">Latitude</label>
+            <span className="w-[11px] border-t border-t-[#606060]"></span>
+            <Textarea
+              {...props}
+              onChange={e => handlePointValueChange('latitude', e.currentTarget.value)}
+              value={pointValues.latitude}
+              className={`${textareaStyles({ variant: props.variant })} max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap font-normal placeholder:font-normal`}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[19px] text-bodySemibold font-normal text-text">Longitude</label>
+            <span className="w-[11px] border-t border-t-[#606060]"></span>
+            <Textarea
+              {...props}
+              onChange={e => handlePointValueChange('longitude', e.currentTarget.value)}
+              value={pointValues.longitude}
+              className={`${textareaStyles({ variant: props.variant })} max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap font-normal placeholder:font-normal`}
+            />
+          </div>
+        </div>
+        <div className="flex h-7 items-center gap-[6px]">
+          {/* Toggle */}
+          <div onClick={handleBrowseMode} className="relative h-3 w-5 cursor-pointer rounded-lg bg-black">
+            <div
+              className={`absolute top-[1px] h-[10px] w-[10px] rounded-full bg-white transition-all duration-300 ease-in-out ${browserMode ? 'right-[9px]' : 'right-[1px]'}`}
+            ></div>
+          </div>
+          <span className="text-[1rem] font-normal leading-5 text-grey-04">Show map in browse mode</span>
+        </div>
+      </div>
+      <MapPlaceHolder browseMode={browserMode} />
+    </div>
+  );
+}
+
+const MapPlaceHolder = ({ browseMode }: { browseMode: boolean }) => {
+  return (
+    <div
+      className={`flex h-[200px] w-full items-center justify-center rounded transition-colors duration-200 ease-in-out ${browseMode ? 'bg-grey-03' : 'bg-grey-04'}`}
+    >
+      <span className="rounded-md bg-white px-3 pb-[6px] pt-1 text-[1rem] font-medium leading-5 text-grey-04">
+        Add a location using latitude and longitude
+      </span>
+    </div>
+  );
+};

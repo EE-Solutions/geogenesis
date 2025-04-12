@@ -73,7 +73,14 @@ function TriplesGroup({
                   case 'NUMBER':
                     return (
                       <Text key={`string-${renderable.attributeId}-${renderable.value}`} as="p">
-                        {renderable.value}
+                        {/* TO DO replace hardcoded attributeId */}
+                        {t.attributeId === 'GSA7HUQwsUbMJQ2RDGNi2W' ? `(${renderable.value})` : `${renderable.value}`}
+                      </Text>
+                    );
+                  case 'POINT':
+                    return (
+                      <Text key={`string-${renderable.attributeId}-${renderable.value}`} as="p">
+                        ({renderable.value})
                       </Text>
                     );
                   case 'CHECKBOX': {
