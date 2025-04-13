@@ -2,6 +2,7 @@ import * as React from 'react';
 
 import { useRelationship } from '~/core/hooks/use-relationship';
 import { useRenderables } from '~/core/hooks/use-renderables';
+import { useRelationshipIndices } from '~/core/hooks/use-relationship-indices';
 import { Relation, RelationRenderableProperty, Triple, TripleRenderableProperty } from '~/core/types';
 import { GeoNumber, NavUtils, getImagePath } from '~/core/utils/utils';
 
@@ -126,6 +127,12 @@ function RelationsGroup({ relations }: { relations: RelationRenderableProperty[]
   const attributeName = relations[0].attributeName;
   const spaceId = relations[0].spaceId;
 
+  // Use the relationship indices hook to sort relations properly
+  const { 
+    sortedItems: sortedRelations, 
+    isLoading 
+  } = useRelationshipIndices(relations, { spaceId });
+
   return (
     <>
       <div key={`${attributeId}-${attributeName}`} className="break-words">
@@ -135,7 +142,7 @@ function RelationsGroup({ relations }: { relations: RelationRenderableProperty[]
           </Text>
         </Link>
         <div className="flex flex-wrap gap-2">
-          {relations.map(r => {
+          {!isLoading && sortedRelations.map(r => {
             const relationId = r.relationId;
             const relationName = r.valueName;
             const renderableType = r.type;

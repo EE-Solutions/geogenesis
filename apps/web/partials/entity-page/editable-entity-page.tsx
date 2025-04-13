@@ -13,6 +13,7 @@ import { useEditEvents } from '~/core/events/edit-events';
 import { useProperties } from '~/core/hooks/use-properties';
 import { useRelationship } from '~/core/hooks/use-relationship';
 import { useRenderables } from '~/core/hooks/use-renderables';
+import { useRelationshipIndices } from '~/core/hooks/use-relationship-indices';
 import { ID } from '~/core/id';
 import { EntityId } from '~/core/io/schema';
 import { useEntityPageStore } from '~/core/state/entity-page-store/entity-store';
@@ -264,181 +265,17 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
   const typeOfRenderableType = relations[0].type;
   const property = properties?.[typeOfId];
   const relationValueTypes = property?.relationValueTypes;
-  const filterByTypes = property?.relationValueTypes?.map(r => r.typeId);    
-
-  const [relationItems, setRelationItems] = React.useState<RelationRenderableProperty[]>(relations);
-  const [relationIndices, setRelationIndices] = React.useState<Record<string, string>>({});
+  const filterByTypes = property?.relationValueTypes?.map(r => r.typeId);
   
-  const { entities: collectionItems, isLoading: isCollectionItemsLoading } = useQueryEntities({
-    enabled: relations !== null,
-    where: {
-      id: {
-        in: relationItems.map(r => r.relationId),
-      },
-    },
-  });
-
-  React.useEffect(() => {
-    setRelationItems(relations);
-  }, [relations]);
-
-  React.useEffect(() => {
-    if (!isCollectionItemsLoading && collectionItems) {
-      // Create an object mapping relation IDs to their index values
-      const indicesMap: Record<string, string> = {};
-      
-      collectionItems.forEach((entity) => {
-        const indexTriple = entity.triples.find(t => t.attributeId === SystemIds.RELATION_INDEX);
-        if (indexTriple && indexTriple.value && indexTriple.value.value) {
-          indicesMap[entity.id] = indexTriple.value.value;
-        }
-      });
-
-      setRelationIndices(indicesMap);
-      
-      // Sort relationItems by their string index values
-      const sortedRelationItems = [...relationItems].sort((a, b) => {
-        const indexA = indicesMap[a.relationId] || '';
-        const indexB = indicesMap[b.relationId] || '';
-        
-        // String comparison - this will properly sort lexicographically
-        return indexA.localeCompare(indexB, undefined, { numeric: true });
-      });
-      
-      // Only update if the order has changed
-      if (JSON.stringify(sortedRelationItems.map(item => item.relationId)) !== 
-          JSON.stringify(relationItems.map(item => item.relationId))) {
-        setRelationItems(sortedRelationItems);
-      }
-    }
-  }, [collectionItems, isCollectionItemsLoading, relationItems]);
-
-  const handleReorder = (reorderedItems: RelationRenderableProperty[]) => {
-    setRelationItems(reorderedItems);
-    
-    // Check if there are any duplicate indices that need to be fixed
-    const indices = Object.values(relationIndices);
-    const hasDuplicateIndices = indices.length > 0 && indices.some((index, i, arr) => 
-      arr.indexOf(index) !== i
-    );
-    
-    // First pass: if we have duplicate indices, we need to fix them first
-    if (hasDuplicateIndices) {
-      // Create new indices for each item sequentially
-      // We'll process them one by one to create a proper sequence
-      const tempIndices: Record<string, string> = {};
-      
-      // First item gets a starting index using R.reorder
-      if (reorderedItems.length > 0) {
-        try {
-          // Get a new index for the first item (without a before index)
-          const firstItemOrdering = R.reorder({
-            relationId: reorderedItems[0].relationId,
-            beforeIndex: undefined,
-            afterIndex: undefined, // Initially no after index
-          });
-
-          console.log('First item ordering:', firstItemOrdering);
-          
-          // Store this first index
-          tempIndices[reorderedItems[0].relationId] = firstItemOrdering.triple.value.value;
-          
-          // Update the database
-          DB.upsert({
-            entityId: reorderedItems[0].relationId,
-            attributeId: SystemIds.RELATION_INDEX,
-            attributeName: 'Index',
-            entityName: null,
-            value: firstItemOrdering.triple.value,
-          }, spaceId);
-          
-          // Now process the rest of the items in sequence
-          for (let i = 1; i < reorderedItems.length; i++) {
-            const currentItem = reorderedItems[i];
-            const previousItem = reorderedItems[i - 1];
-            
-            // Use R.reorder with the previous item's index as the beforeIndex
-            const currentOrdering = R.reorder({
-              relationId: currentItem.relationId,
-              beforeIndex: tempIndices[previousItem.relationId],
-              afterIndex: undefined,
-            });
-
-            console.log('Current item ordering:', currentOrdering);
-            
-            // Store this new index
-            tempIndices[currentItem.relationId] = currentOrdering.triple.value.value;
-            
-            // Update the database
-            DB.upsert({
-              entityId: currentItem.relationId,
-              attributeId: SystemIds.RELATION_INDEX,
-              attributeName: 'Index',
-              entityName: null,
-              value: currentOrdering.triple.value,
-            }, spaceId);
-          }
-          
-          // Update our local state with all the new indices
-          setRelationIndices(tempIndices);
-        } catch (error) {
-          console.error('Error fixing duplicate indices:', error);
-        }
-      }
-    }
-    // Regular reordering process when indices are already unique
-    else {
-      reorderedItems.forEach((item, arrayIndex) => {
-        const beforeItem = arrayIndex > 0 ? reorderedItems[arrayIndex - 1] : undefined;
-        const afterItem = arrayIndex < reorderedItems.length - 1 ? reorderedItems[arrayIndex + 1] : undefined;
-        
-        const beforeIndex = beforeItem ? relationIndices[beforeItem.relationId] : undefined;
-        const afterIndex = afterItem ? relationIndices[afterItem.relationId] : undefined;
-        const currentIndex = relationIndices[item.relationId];
-        
-        // Only update if the item's index is out of order relative to its neighbors
-        const needsUpdate = 
-          // Item needs to be moved after beforeItem (current index < before index)
-          (beforeIndex && currentIndex && beforeIndex > currentIndex) || 
-          // Item needs to be moved before afterItem (current index > after index)
-          (afterIndex && currentIndex && currentIndex > afterIndex) ||
-          // Skip if we have both indices and they're the same
-          (beforeIndex === afterIndex && beforeIndex !== undefined);
-          
-        // Skip if no update is needed
-        if (!needsUpdate) {
-          return;
-        }
-        
-        try {
-          const newTripleOrdering = R.reorder({
-            relationId: item.relationId,
-            beforeIndex: beforeIndex,
-            afterIndex: afterIndex,
-          });
-          
-          DB.upsert({
-            entityId: item.relationId,
-            attributeId: SystemIds.RELATION_INDEX,
-            attributeName: 'Index',
-            entityName: null,
-            value: newTripleOrdering.triple.value,
-          }, spaceId);
-          
-          setRelationIndices(prev => ({
-            ...prev,
-            [item.relationId]: newTripleOrdering.triple.value.value
-          }));
-        } catch (error) {
-          console.error('Error reordering relation:', error);
-        }
-      });
-    }
-  };
+  // Use the new hook to manage relationship indices
+  const { 
+    sortedItems: relationItems, 
+    reorderItems: handleReorder,
+    isLoading 
+  } = useRelationshipIndices(relations, { spaceId });
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-
       <Reorder.Group 
         as="span" 
         axis="x" 
@@ -446,7 +283,7 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
         onReorder={handleReorder}
         className="flex flex-wrap gap-2 items-center"
       >
-        {relationItems.map((r) => {
+        {!isLoading && relationItems.map((r) => {
           const relationId = r.relationId;
           const relationName = r.valueName;
           const renderableType = r.type;
