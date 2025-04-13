@@ -112,21 +112,43 @@ export function mappingToRows(
   spaceId: string,
   properties?: Record<PropertyId, PropertySchema>
 ): Row[] {
+  // Sort entities based on their corresponding index in collectionItems
+  const sortedEntities = [...entities].sort((a, b) => {
+    const aItem = collectionItems.find(item => 
+      item.triples.some(triple => 
+        triple.attributeId === SystemIds.RELATION_TO_ATTRIBUTE && 
+        triple.value.value.includes(a.id)
+      )
+    );
+    const bItem = collectionItems.find(item => 
+      item.triples.some(triple => 
+        triple.attributeId === SystemIds.RELATION_TO_ATTRIBUTE && 
+        triple.value.value.includes(b.id)
+      )
+    );
+
+    const aIndex = aItem?.triples.find(t => t.attributeId === SystemIds.RELATION_INDEX)?.value.value || '';
+    const bIndex = bItem?.triples.find(t => t.attributeId === SystemIds.RELATION_INDEX)?.value.value || '';
+
+    return aIndex.localeCompare(bIndex);
+  });
+
   /**
    * Take each row, take each mapping, take each "slot" in the mapping
    * and map them into the Row structure.
    */
-  return entities.map(({ name, triples, id, relationsOut, description }) => {
+  return sortedEntities.map(({ name, triples, id, relationsOut, description }) => {
     const newSlots = slotIds.reduce(
       (acc, slotId) => {
         const cellTriples = triples.filter(triple => triple.attributeId === slotId);
         const cellRelations = relationsOut.filter(t => t.typeOf.id === slotId);
-
+        console.log("entity data:", { name, id, relationsOut });
         const cell: Cell = {
           slotId: slotId,
           cellId: id,
           renderables: [],
           name,
+          index: cellRelations[0]?.index || "", // Add indexes from cellRelations for this specific cell
         };
 
         const maybeProperty = properties?.[PropertyId(slotId)];
