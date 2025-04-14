@@ -1,6 +1,7 @@
 import { cva, cx } from 'class-variance-authority';
 import Zoom from 'react-medium-image-zoom';
 import Textarea from 'react-textarea-autosize';
+import mapboxgl from 'mapbox-gl';
 
 import * as React from 'react';
 import { ChangeEvent, useEffect, useRef } from 'react';
@@ -345,18 +346,21 @@ export function GeoLocationPointFields({ ...props }: PageStringFieldProps) {
   const [localValue, setLocalValue] = React.useState(props.value || '');
   const [browserMode, setBrowseMode] = React.useState(true);
   const [pointValues, setPointsValues] = React.useState({
-    latitude: props.value?.split(',')[0]?.replaceAll(' ', ''),
-    longitude: props.value?.split(',')[1]?.replaceAll(' ', ''),
+    latitude: props.value?.split(',')[0]?.replaceAll(' ', '') || '',
+    longitude: props.value?.split(',')[1]?.replaceAll(' ', '') || '',
   });
 
-  const validNumberPattern = /^\d*\.?\d*$/;
+  const validNumberPattern = /^-?\d*\.?\d*$/;
 
   const handlePointValueChange = (label: string, newValue: string) => {
+    console.log(`newValue ${label}`, newValue);
     if (newValue === '' || validNumberPattern.test(newValue)) {
       setPointsValues(prev => ({
         ...prev,
         [label]: newValue,
       }));
+    } else {
+      console.log('Invalid input');
     }
   };
 
@@ -377,7 +381,7 @@ export function GeoLocationPointFields({ ...props }: PageStringFieldProps) {
     onChange(value);
   }, 1000);
 
-  // Handle browse mode (for now always true)
+  // Handle browse mode toggle
   const handleBrowseMode = () => {
     setBrowseMode(prev => !prev);
   };
@@ -409,7 +413,10 @@ export function GeoLocationPointFields({ ...props }: PageStringFieldProps) {
         </div>
         <div className="flex h-7 items-center gap-[6px]">
           {/* Toggle */}
-          <div className="relative h-3 w-5 cursor-pointer rounded-lg bg-black">
+          <div 
+            className="relative h-3 w-5 cursor-pointer rounded-lg bg-black"
+            onClick={handleBrowseMode}
+          >
             <div
               className={`absolute top-[1px] h-[10px] w-[10px] rounded-full bg-white transition-all duration-300 ease-in-out ${browserMode ? 'right-[1px]' : 'right-[9px]'}`}
             ></div>
@@ -417,19 +424,83 @@ export function GeoLocationPointFields({ ...props }: PageStringFieldProps) {
           <span className="text-[1rem] font-normal leading-5 text-grey-04">Show map in browse mode</span>
         </div>
       </div>
-      <MapPlaceHolder browseMode={browserMode} />
+      <MapPlaceHolder 
+        browseMode={browserMode} 
+        latitude={parseFloat(pointValues.latitude) || 0} 
+        longitude={parseFloat(pointValues.longitude) || 0} 
+      />
     </div>
   );
 }
 
-export const MapPlaceHolder = ({ browseMode }: { browseMode: boolean }) => {
+export const MapPlaceHolder = ({ 
+  browseMode, 
+  latitude, 
+  longitude 
+}: { 
+  browseMode: boolean, 
+  latitude?: number, 
+  longitude?: number 
+}) => {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
+
+  console.log("MapPlaceHolder", { browseMode, latitude, longitude });
+
+  // Initialize map when component mounts
+  useEffect(() => {
+    if (!browseMode || !mapContainerRef.current) return;
+
+    mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
+    
+    const defaultLat = latitude ?? 40;
+    const defaultLng = longitude ?? -74.5;
+    
+    const map = new mapboxgl.Map({
+      container: mapContainerRef.current,
+      style: 'mapbox://styles/mapbox/streets-v11',
+      center: [defaultLng, defaultLat],
+      zoom: 9
+    });
+
+    // Add marker to the map
+    const marker = new mapboxgl.Marker()
+      .setLngLat([defaultLng, defaultLat])
+      .addTo(map);
+
+    mapRef.current = map;
+    markerRef.current = marker;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      markerRef.current = null;
+    };
+  }, [browseMode, latitude, longitude]);
+
+  // Update map when coordinates change
+  useEffect(() => {
+    if (!mapRef.current || !markerRef.current) return;
+    
+    const validLat = latitude !== undefined && !isNaN(latitude);
+    const validLng = longitude !== undefined && !isNaN(longitude);
+    
+    if (validLat && validLng) {
+      mapRef.current.setCenter([longitude, latitude]);
+      markerRef.current.setLngLat([longitude, latitude]);
+    }
+  }, [latitude, longitude]);
+
   return (
     <div
-      className={`flex w-full items-center justify-center rounded bg-grey-04 transition-all duration-200 ease-in-out  ${browseMode ? 'h-[200px]' : 'h-0 opacity-0'}`}
+      className={`w-full rounded transition-all duration-200 ease-in-out ${
+        browseMode ? 'h-[200px]' : 'h-0 opacity-0 overflow-hidden'
+      }`}
     >
-      <span className="rounded-md bg-white px-3 pb-[6px] pt-1 text-[1rem] font-medium leading-5 text-grey-04">
-        Add a location using latitude and longitude
-      </span>
+      {browseMode ? (
+        <div ref={mapContainerRef} className="h-full w-full rounded" />
+      ) : null}
     </div>
   );
-};
+}

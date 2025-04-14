@@ -79,14 +79,35 @@ function TriplesGroup({
                       </Text>
                     );
                   case 'POINT':
-                    return (
-                      <div className="flex w-full flex-col gap-2">
-                        <Text key={`string-${renderable.attributeId}-${renderable.value}`} as="p">
-                          ({renderable.value})
-                        </Text>
-                        <MapPlaceHolder browseMode={true} />
-                      </div>
-                    );
+                    if (renderable.attributeId === 'GSA7HUQwsUbMJQ2RDGNi2W') {
+                      // Parse the coordinates from the value string
+                      const coordParts = renderable.value.split(',').map(part => part.trim());
+                      const pointLat = parseFloat(coordParts[0]);
+                      const pointLon = parseFloat(coordParts[1]);
+                      
+                      return (
+                        <div className="flex w-full flex-col gap-2">
+                          <Text key={`string-${renderable.attributeId}-${renderable.value}`} as="p">
+                            ({renderable.value})
+                          </Text>
+                          <MapPlaceHolder 
+                            browseMode={true} 
+                            latitude={!isNaN(pointLat) ? pointLat : undefined} 
+                            longitude={!isNaN(pointLon) ? pointLon : undefined} 
+                          />
+                          
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="flex w-full flex-col gap-2">
+                          <Text key={`string-${renderable.attributeId}-${renderable.value}`} as="p">
+                            ({renderable.value})
+                          </Text>
+                        </div>
+                      )
+                    }
+                    
                   case 'CHECKBOX': {
                     const checked = getChecked(renderable.value);
 
