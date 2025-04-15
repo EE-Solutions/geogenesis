@@ -242,8 +242,6 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
     },
   });
 
-  console.log(relations);
-
   const hasPlaceholders = relations.some(r => r.placeholder === true);
   const typeOfId = relations[0].attributeId;
   const typeOfName = relations[0].attributeName;
@@ -661,7 +659,8 @@ function TriplesGroup({ triples }: TriplesGroupProps) {
                     placeholder="Add value..."
                     aria-label="text-field"
                     value={renderable.value}
-                    onChange={value => {
+                    isBrowseMode={renderable.options?.browseMode}
+                    onChange={(value, isBrowseMode) => {
                       send({
                         type: 'UPSERT_RENDERABLE_TRIPLE_VALUE',
                         payload: {
@@ -669,6 +668,9 @@ function TriplesGroup({ triples }: TriplesGroupProps) {
                           value: {
                             type: 'POINT',
                             value: value,
+                            options: {
+                              browseMode: isBrowseMode,
+                            },
                           },
                         },
                       });

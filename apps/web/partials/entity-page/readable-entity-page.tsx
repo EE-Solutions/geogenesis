@@ -1,3 +1,5 @@
+import { cons } from 'effect/List';
+
 import * as React from 'react';
 
 import { useRelationship } from '~/core/hooks/use-relationship';
@@ -84,18 +86,21 @@ function TriplesGroup({
                       const coordParts = renderable.value.split(',').map(part => part.trim());
                       const pointLat = parseFloat(coordParts[0]);
                       const pointLon = parseFloat(coordParts[1]);
-                      
+
+                      console.log(renderable);
+
                       return (
                         <div className="flex w-full flex-col gap-2">
                           <Text key={`string-${renderable.attributeId}-${renderable.value}`} as="p">
                             ({renderable.value})
                           </Text>
-                          <MapPlaceHolder 
-                            browseMode={true} 
-                            latitude={!isNaN(pointLat) ? pointLat : undefined} 
-                            longitude={!isNaN(pointLon) ? pointLon : undefined} 
+                          <MapPlaceHolder
+                            browseMode={
+                              renderable.options?.browseMode === undefined ? true : renderable.options?.browseMode
+                            }
+                            latitude={!isNaN(pointLat) ? pointLat : undefined}
+                            longitude={!isNaN(pointLon) ? pointLon : undefined}
                           />
-                          
                         </div>
                       );
                     } else {
@@ -105,9 +110,9 @@ function TriplesGroup({
                             ({renderable.value})
                           </Text>
                         </div>
-                      )
+                      );
                     }
-                    
+
                   case 'CHECKBOX': {
                     const checked = getChecked(renderable.value);
 
