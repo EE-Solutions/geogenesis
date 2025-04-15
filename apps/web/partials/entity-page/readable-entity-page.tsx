@@ -95,9 +95,7 @@ function TriplesGroup({
                             ({renderable.value})
                           </Text>
                           <MapPlaceHolder
-                            browseMode={
-                              renderable.options?.browseMode === undefined ? true : renderable.options?.browseMode
-                            }
+                            browseMode={renderable.options?.format === 'MAP'}
                             latitude={!isNaN(pointLat) ? pointLat : undefined}
                             longitude={!isNaN(pointLon) ? pointLon : undefined}
                           />

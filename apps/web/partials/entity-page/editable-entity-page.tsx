@@ -659,7 +659,7 @@ function TriplesGroup({ triples }: TriplesGroupProps) {
                     placeholder="Add value..."
                     aria-label="text-field"
                     value={renderable.value}
-                    isBrowseMode={renderable.options?.browseMode}
+                    isBrowseMode={renderable.options?.format}
                     onChange={(value, isBrowseMode) => {
                       send({
                         type: 'UPSERT_RENDERABLE_TRIPLE_VALUE',
@@ -669,7 +669,7 @@ function TriplesGroup({ triples }: TriplesGroupProps) {
                             type: 'POINT',
                             value: value,
                             options: {
-                              browseMode: isBrowseMode,
+                              format: isBrowseMode,
                             },
                           },
                         },

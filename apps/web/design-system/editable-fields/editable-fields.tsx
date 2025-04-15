@@ -89,11 +89,11 @@ interface PageStringFieldProps {
 }
 
 interface PageGeoLocationFieldProps {
-  onChange: (value: string, isBrowseMode: boolean) => void;
+  onChange: (value: string, isBrowseMode: string) => void;
   placeholder?: string;
   variant?: 'mainPage' | 'body' | 'smallTitle';
   value?: string;
-  isBrowseMode?: boolean;
+  isBrowseMode?: string;
 }
 
 export function PageStringField({ ...props }: PageStringFieldProps) {
@@ -352,7 +352,9 @@ export function TableImageField({ imageSrc, onImageChange, onImageRemove, varian
 
 export function GeoLocationPointFields({ ...props }: PageGeoLocationFieldProps) {
   const [localValue, setLocalValue] = React.useState(props.value || '');
-  const [browserMode, setBrowseMode] = React.useState(props.isBrowseMode === undefined ? true : props.isBrowseMode);
+  const [browserMode, setBrowseMode] = React.useState(
+    props.isBrowseMode === undefined ? true : props.isBrowseMode === 'MAP'
+  );
   const [pointValues, setPointsValues] = React.useState({
     latitude: props.value?.split(',')[0]?.replaceAll(' ', '') || '',
     longitude: props.value?.split(',')[1]?.replaceAll(' ', '') || '',
@@ -386,7 +388,7 @@ export function GeoLocationPointFields({ ...props }: PageGeoLocationFieldProps) 
 
   // Apply debounce effect
   const debouncedCallback = debounce((value: string) => {
-    onChange(value, browserMode);
+    onChange(value, browserMode ? 'MAP' : '');
   }, 1000);
 
   // Handle browse mode toggle
