@@ -5,7 +5,9 @@ import Textarea from 'react-textarea-autosize';
 import * as React from 'react';
 import { ChangeEvent, useEffect, useRef } from 'react';
 
+import { useRenderables } from '~/core/hooks/use-renderables';
 import { Services } from '~/core/services';
+import type { Triple } from '~/core/types';
 import { getImagePath } from '~/core/utils/utils';
 
 import { SmallButton, SquareButton } from '~/design-system/button';
@@ -13,6 +15,7 @@ import { SmallButton, SquareButton } from '~/design-system/button';
 import { Dots } from '../dots';
 import { Trash } from '../icons/trash';
 import { Upload } from '../icons/upload';
+import { Map } from '../map';
 
 const textareaStyles = cva(
   // The react-textarea-autosize library miscalculates the height by 1 pixel. We add a negative margin
@@ -87,6 +90,14 @@ interface PageStringFieldProps {
   value?: string;
 }
 
+interface PageGeoLocationFieldProps {
+  onChange: (value: string, isBrowseMode: string) => void;
+  placeholder?: string;
+  variant?: 'mainPage' | 'body' | 'smallTitle';
+  value?: string;
+  isBrowseMode?: string;
+}
+
 export function PageStringField({ ...props }: PageStringFieldProps) {
   const [localValue, setLocalValue] = React.useState(props.value || '');
   const { onChange } = props;
@@ -145,6 +156,7 @@ const imageStyles: Record<ImageVariant, React.CSSProperties> = {
 };
 
 export function ImageZoom({ imageSrc, variant = 'default' }: ImageZoomProps) {
+  console.log(imageSrc);
   return (
     <Zoom>
       <div className="relative" style={imageStyles[variant]}>
@@ -336,6 +348,95 @@ export function TableImageField({ imageSrc, onImageChange, onImageRemove, varian
         onChange={handleChange}
         type="file"
         className="hidden"
+      />
+    </div>
+  );
+}
+
+export function GeoLocationPointFields({ ...props }: PageGeoLocationFieldProps) {
+  const [localValue, setLocalValue] = React.useState(props.value || '');
+  const [browserMode, setBrowseMode] = React.useState(
+    props.isBrowseMode === undefined ? true : props.isBrowseMode === 'MAP'
+  );
+  const [pointValues, setPointsValues] = React.useState({
+    latitude: props.value?.split(',')[0]?.replaceAll(' ', '') || '',
+    longitude: props.value?.split(',')[1]?.replaceAll(' ', '') || '',
+  });
+
+  const validNumberPattern = /^-?\d*\.?\d*$/;
+
+  const handlePointValueChange = (label: string, newValue: string) => {
+    if (newValue === '' || validNumberPattern.test(newValue)) {
+      setPointsValues(prev => ({
+        ...prev,
+        [label]: newValue,
+      }));
+    } else {
+      console.error('Invalid input');
+    }
+  };
+
+  useEffect(() => {
+    setLocalValue(`${pointValues.latitude},${pointValues.longitude}`);
+    debouncedCallback(`${pointValues.latitude},${pointValues.longitude}`);
+  }, [pointValues, browserMode]);
+
+  const { onChange } = props;
+
+  useEffect(() => {
+    // Update local value if value prop changes from outside the component
+    setLocalValue(props.value || '');
+  }, [props.value]);
+
+  // Apply debounce effect
+  const debouncedCallback = debounce((value: string) => {
+    onChange(value, browserMode ? 'MAP' : '');
+  }, 1000);
+
+  // Handle browse mode toggle
+  const handleBrowseMode = () => {
+    setBrowseMode(prev => !prev);
+  };
+
+  return (
+    <div className="flex w-full flex-col gap-4">
+      <div className="mt-[3px] flex w-full justify-between  leading-[29px]">
+        <div className="flex items-center gap-5">
+          <div className="flex items-center gap-2">
+            <label className="text-[19px] text-bodySemibold font-normal text-text">Latitude</label>
+            <span className="w-[11px] border-t border-t-[#606060]"></span>
+            <Textarea
+              {...props}
+              onChange={e => handlePointValueChange('latitude', e.currentTarget.value)}
+              value={pointValues.latitude}
+              className={`${textareaStyles({ variant: props.variant })} max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap font-normal placeholder:font-normal`}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[19px] text-bodySemibold font-normal text-text">Longitude</label>
+            <span className="w-[11px] border-t border-t-[#606060]"></span>
+            <Textarea
+              {...props}
+              onChange={e => handlePointValueChange('longitude', e.currentTarget.value)}
+              value={pointValues.longitude}
+              className={`${textareaStyles({ variant: props.variant })} max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap font-normal placeholder:font-normal`}
+            />
+          </div>
+        </div>
+        <div className="flex h-7 items-center gap-[6px]">
+          {/* Toggle */}
+          <div className="relative h-3 w-5 cursor-pointer rounded-lg bg-black" onClick={handleBrowseMode}>
+            <div
+              className={`absolute top-[1px] h-[10px] w-[10px] rounded-full bg-white transition-all duration-300 ease-in-out ${browserMode ? 'right-[1px]' : 'right-[9px]'}`}
+            ></div>
+          </div>
+          <span className="text-[1rem] font-normal leading-5 text-grey-04">Show map in browse mode</span>
+        </div>
+      </div>
+      <Map
+        browseMode={browserMode}
+        latitude={parseFloat(pointValues.latitude) || 0}
+        longitude={parseFloat(pointValues.longitude) || 0}
       />
     </div>
   );
