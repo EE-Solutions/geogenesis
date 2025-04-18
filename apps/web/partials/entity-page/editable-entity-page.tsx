@@ -97,6 +97,11 @@ export function EditableEntityPage({ id, spaceId, triples: serverTriples }: Prop
               send
             );
 
+            // Hide cover property, as user can upload cover using upload icon on top placeholder
+            if (renderableType === 'IMAGE' && firstRenderable.attributeId === '7YHk6qYkNDaAtNb8GwmysF') {
+              return null;
+            }
+
             return (
               <div key={`${id}-${attributeId}`} className="relative  break-words">
                 <EditableAttribute
@@ -123,7 +128,6 @@ export function EditableEntityPage({ id, spaceId, triples: serverTriples }: Prop
                 ) : (
                   <TriplesGroup key={attributeId} triples={renderables as TripleRenderableProperty[]} />
                 )}
-
                 <div
                   className={`absolute right-0 flex items-center gap-1 ${firstRenderable.attributeId === 'GSA7HUQwsUbMJQ2RDGNi2W' && renderableType === 'POINT' ? 'top-0' : 'top-6'}`}
                 >

@@ -6,7 +6,9 @@ import Textarea from 'react-textarea-autosize';
 import * as React from 'react';
 import { ChangeEvent, useEffect, useRef } from 'react';
 
+import { useRenderables } from '~/core/hooks/use-renderables';
 import { Services } from '~/core/services';
+import type { Triple } from '~/core/types';
 import { getImagePath } from '~/core/utils/utils';
 
 import { SmallButton, SquareButton } from '~/design-system/button';
@@ -154,6 +156,7 @@ const imageStyles: Record<ImageVariant, React.CSSProperties> = {
 };
 
 export function ImageZoom({ imageSrc, variant = 'default' }: ImageZoomProps) {
+  console.log(imageSrc);
   return (
     <Zoom>
       <div className="relative" style={imageStyles[variant]}>
@@ -506,4 +509,13 @@ export const MapPlaceHolder = ({
       {browseMode ? <div ref={mapContainerRef} className="h-full w-full rounded" /> : null}
     </div>
   );
+};
+
+export const MainCoverPlaceHolder = ({ serverTriples, spaceId }: { serverTriples: Triple[]; spaceId: string }) => {
+  const { renderablesGroupedByAttributeId, addPlaceholderRenderable, removeEmptyPlaceholderRenderable } =
+    useRenderables(serverTriples, spaceId);
+
+  console.log(renderablesGroupedByAttributeId);
+
+  return <div>11111</div>;
 };
