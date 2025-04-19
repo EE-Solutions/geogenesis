@@ -69,6 +69,8 @@ export function EditableEntityPage({ id, spaceId, triples: serverTriples }: Prop
     },
   });
 
+  console.log(renderablesGroupedByAttributeId);
+
   const properties = useProperties(Object.keys(renderablesGroupedByAttributeId));
 
   return (
@@ -91,6 +93,14 @@ export function EditableEntityPage({ id, spaceId, triples: serverTriples }: Prop
               },
               send
             );
+
+            // Hide cover property, as user can upload cover using upload icon on top placeholder
+            if (
+              (renderableType === 'IMAGE' && firstRenderable.attributeId === '7YHk6qYkNDaAtNb8GwmysF') ||
+              (renderableType === 'IMAGE' && firstRenderable.attributeId === '399xP4sGWSoepxeEnp3UdR')
+            ) {
+              return null;
+            }
 
             return (
               <div key={`${id}-${attributeId}`} className="relative break-words">
@@ -276,6 +286,7 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
             <div key={`relation-upload-image-${relationId}`}>
               <PageImageField
                 onImageChange={imageSrc => {
+                  console.log('here image');
                   const { id: imageId, ops } = Image.make({ cid: imageSrc });
                   const [createRelationOp, setTripleOp] = ops;
 
