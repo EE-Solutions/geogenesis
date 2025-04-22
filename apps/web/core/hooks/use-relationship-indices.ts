@@ -1,10 +1,11 @@
 import { SystemIds, Relation as R } from '@graphprotocol/grc-20';
 import { useQueryEntities } from '~/core/sync/use-store';
 import { DB } from '~/core/database/write';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 
 type RelationEntity = {
   relationId: string;
+  index?: string;
   [key: string]: any;
 };
 
@@ -44,48 +45,72 @@ export function useRelationshipIndices<T extends RelationEntity>(
     },
   });
 
-  // Update items when input changes
+  // Store the original items in a ref to avoid dependency issues
+  const itemsRef = useRef(items);
   useEffect(() => {
-    setRelationItems(items);
+    itemsRef.current = items;
   }, [items]);
 
-  // Load and sort items by their indices
-  useEffect(() => {
-    if (!isLoading && collectionItems) {
-      // Create an object mapping relation IDs to their index values
-      const indicesMap: Record<string, string> = {};
-      
-      collectionItems.forEach((entity) => {
-        const indexTriple = entity.triples.find(t => t.attributeId === SystemIds.RELATION_INDEX);
-        if (indexTriple && indexTriple.value && indexTriple.value.value) {
-          indicesMap[entity.id] = indexTriple.value.value;
-        }
-      });
-
-      setRelationIndices(indicesMap);
-      
-      // Sort relationItems by their string index values
-      const sortedRelationItems = [...relationItems].sort((a, b) => {
-        const indexA = indicesMap[a.relationId] || '';
-        const indexB = indicesMap[b.relationId] || '';
-        
-        // String comparison - this will properly sort lexicographically
-        return indexA.localeCompare(indexB, undefined, { numeric: true });
-      });
-      
-      // Only update if the order has changed
-      if (JSON.stringify(sortedRelationItems.map(item => item.relationId)) !== 
-          JSON.stringify(relationItems.map(item => item.relationId))) {
-        setRelationItems(sortedRelationItems);
+  // Create indices map from collection items
+  const indicesMap = useMemo(() => {
+    if (!collectionItems) return {};
+    
+    const map: Record<string, string> = {};
+    collectionItems.forEach((entity) => {
+      const indexTriple = entity.triples.find(t => t.attributeId === SystemIds.RELATION_INDEX);
+      if (indexTriple?.value?.value) {
+        map[entity.id] = indexTriple.value.value;
       }
+    });
+    
+    return map;
+  }, [collectionItems]);
+  
+  // Calculate sorted items based on indices map and original items
+  const sortedItems = useMemo(() => {
+    // Only recalculate when items or indices change
+    const currentItems = itemsRef.current;
+    
+    if (!currentItems.length || Object.keys(indicesMap).length === 0) {
+      return currentItems;
     }
-  }, [collectionItems, isLoading, relationItems]);
+
+    // Create a new sorted array with index values attached
+    const result = [...currentItems].sort((a, b) => {
+      const indexA = indicesMap[a.relationId] || '';
+      const indexB = indicesMap[b.relationId] || '';
+      return indexA.localeCompare(indexB, undefined, { numeric: true });
+    });
+    
+    // Add index values to sorted items
+    result.forEach(item => {
+      const indexValue = indicesMap[item.relationId];
+      if (indexValue) {
+        item.index = indexValue;
+      }
+    });
+    
+    return result;
+  }, [indicesMap]); // Remove items from dependency array to prevent infinite loops
+
+  // Update state once when sorted items are calculated
+  useEffect(() => {
+    // Only update if we have data and it's different from current state
+    if (sortedItems.length > 0) {
+      setRelationItems(sortedItems);
+      
+      // Also update the indices record for reorderItems to use
+      setRelationIndices(indicesMap);
+    }
+  }, [sortedItems, indicesMap]);
+
 
   /**
    * Reorder relation items and update their indices
    */
   const reorderItems = (reorderedItems: T[]) => {
     setRelationItems(reorderedItems);
+
     
     // Check if there are any duplicate indices that need to be fixed
     const indices = Object.values(relationIndices);
@@ -199,9 +224,11 @@ export function useRelationshipIndices<T extends RelationEntity>(
     }
   };
 
+  // Use the calculated sorted items directly instead of the state
+  // to avoid rendering loops
   return {
-    sortedItems: relationItems,
+    sortedItems: sortedItems.length > 0 ? sortedItems : relationItems,
     reorderItems,
-    isLoading
+    isLoading: isLoading || !collectionItems
   };
 }

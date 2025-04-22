@@ -142,7 +142,7 @@ export function mappingToRows(
       (acc, slotId) => {
         const cellTriples = triples.filter(triple => triple.attributeId === slotId);
         const cellRelations = relationsOut.filter(t => t.typeOf.id === slotId);
-        console.log("entity data:", { name, id, relationsOut });
+
         const cell: Cell = {
           slotId: slotId,
           cellId: id,

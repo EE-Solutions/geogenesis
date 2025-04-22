@@ -20,6 +20,7 @@ import { usePagination } from './use-pagination';
 import { useRelationsBlock } from './use-relations-block';
 import { useSource } from './use-source';
 import { useView } from './use-view';
+import { useRelationshipIndices } from '~/core/hooks/use-relationship-indices';
 
 export const PAGE_SIZE = 9;
 
@@ -53,6 +54,18 @@ export function useDataBlock() {
     isFetched: isCollectionFetched,
     isLoading: isCollectionLoading,
   } = useCollection();
+
+  const { 
+    sortedItems: sortedCollectionItems,
+    reorderItems: reorderCollectionItems,
+    isLoading:  isLoadingCollectionIndices
+  } = useRelationshipIndices(
+    collectionRelations.map(relation => ({
+      ...relation,
+      relationId: relation.id,
+    })),
+    { spaceId }
+  )
 
   const where = filterStateToWhere(filterState);
 
@@ -182,6 +195,8 @@ export function useDataBlock() {
     isLoading = isQueryEntitiesLoading || isSharedDataLoading;
   }
 
+  // We will order properties in the TableBlockTable component
+
   // @TODO: Returned data type should be a FSM depending on the source.type
   return {
     entityId,
@@ -190,6 +205,9 @@ export function useDataBlock() {
 
     blockEntity: entity,
     rows: rows?.slice(0, PAGE_SIZE) ?? [],
+    sortedCollectionItems,
+    reorderCollectionItems,
+    
     properties: propertiesSchema ? Object.values(propertiesSchema) : [],
     propertiesSchema,
 

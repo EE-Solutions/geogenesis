@@ -1,14 +1,16 @@
 import { SystemIds } from '@graphprotocol/grc-20';
 import { INITIAL_RELATION_INDEX_VALUE } from '@graphprotocol/grc-20/constants';
+import React from 'react';
 
 import { StoreRelation } from '~/core/database/types';
 import { DB } from '~/core/database/write';
 import { ID } from '~/core/id';
 import { Entity } from '~/core/io/dto/entities';
 import { EntityId } from '~/core/io/schema';
-import { useQueryEntity } from '~/core/sync/use-store';
+import { useQueryEntities, useQueryEntity } from '~/core/sync/use-store';
 import { Relation } from '~/core/types';
 import { getImagePath } from '~/core/utils/utils';
+import { useRelationshipIndices } from '~/core/hooks/use-relationship-indices';
 
 import { useDataBlockInstance } from './use-data-block';
 import { useMapping } from './use-mapping';
@@ -43,15 +45,53 @@ export function useView() {
         relation.typeOf.id === EntityId(SystemIds.SHOWN_COLUMNS) ||
         relation.typeOf.id === EntityId(SystemIds.PROPERTIES)
     ) ?? [];
+  
+  // Use the relationship indices hook to sort the shown columns
+  const memoizedRelations = React.useMemo(() => shownColumnRelations.map(relation => ({
+    ...relation,
+    relationId: relation.id
+  })), [shownColumnRelations]);
+
+  const { 
+    sortedItems: sortedShownColumnRelations, 
+    reorderItems: reorderShownColumns,
+    isLoading: isLoadingIndices 
+  } = useRelationshipIndices(
+    // Use memoized relations to prevent creating a new array on each render
+    memoizedRelations,
+    { spaceId }
+  );
+
+  // Disable verbose logging during normal operation
+  // if (shownColumnRelations.length > 0) {
+  //   console.log('useView shownColumnRelations', shownColumnRelations);
+  //   console.log('useView sortedShownColumnRelations', sortedShownColumnRelations);
+  // }
 
   const { mapping, isLoading, isFetched } = useMapping(
     entityId,
-    shownColumnRelations.map(r => r.id)
+    // Use the sorted relations for mapping
+    sortedShownColumnRelations.map(r => r.id)
   );
 
-  // @TODO: We shouldn't need the name attribute here since it's automatically
-  // added in useMapping if it's not already part of the properties list.
-  const shownColumnIds = [...Object.keys(mapping), SystemIds.NAME_ATTRIBUTE];
+  // Extract the column IDs in the order they appear in sortedShownColumnRelations
+  // and add NAME_ATTRIBUTE if it's not already included
+  const shownColumnIds = sortedShownColumnRelations
+    .map(relation => relation.toEntity.id.toString())
+    .filter(id => id in mapping);
+
+  // Add NAME_ATTRIBUTE if it's not already in the list
+  if (!shownColumnIds.includes(SystemIds.NAME_ATTRIBUTE)) {
+    shownColumnIds.push(SystemIds.NAME_ATTRIBUTE);
+  }
+
+  // Disable verbose logging during normal operation
+  // console.log('useView sortedShownColumnRelations:', sortedShownColumnRelations.map(r => ({ 
+  //   id: r.id, 
+  //   toEntityId: r.toEntity.id,
+  //   index: r.index
+  // })));
+  // console.log('useView sortedColumnIds:', shownColumnIds);
 
   const view = getView(viewRelation);
   const placeholder = getPlaceholder(blockEntity, view);
@@ -194,16 +234,19 @@ export function useView() {
   };
 
   return {
-    isLoading,
+    isLoading: isLoading || isLoadingIndices,
     isFetched,
     view,
     placeholder,
     viewRelation,
     setView,
     shownColumnIds,
-    shownColumnRelations,
+    // Return sorted relations instead of original
+    shownColumnRelations: sortedShownColumnRelations,
     toggleProperty,
     mapping,
+    // Add the reorder function to the return value
+    reorderShownColumns,
   };
 }
 

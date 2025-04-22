@@ -2,7 +2,7 @@
 
 import { SystemIds } from '@graphprotocol/grc-20';
 import cx from 'classnames';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, Reorder } from 'framer-motion';
 import produce from 'immer';
 
 import * as React from 'react';
@@ -49,6 +49,7 @@ import { TableBlockGalleryItem } from './table-block-gallery-item';
 import { TableBlockListItem } from './table-block-list-item';
 import { TableBlockTable } from './table-block-table';
 import { DraggableItemWrapper } from './draggable-item-wrapper';
+import { DragHandle } from '~/design-system/icons/drag-handle';
 
 interface Props {
   spaceId: string;
@@ -264,12 +265,22 @@ export const TableBlock = ({ spaceId }: Props) => {
   const isEditing = useUserIsEditing(spaceId);
   const canEdit = useCanUserEdit(spaceId);
   const { spaces } = useSpaces();
-  const { properties, rows, setPage, isLoading, hasNextPage, hasPreviousPage, pageNumber, propertiesSchema } =
+  const { properties, rows, sortedCollectionItems, reorderCollectionItems, setPage, isLoading, hasNextPage, hasPreviousPage, pageNumber, propertiesSchema } =
     useDataBlock();
   const { filterState, setFilterState } = useFilters();
   const { view, placeholder, shownColumnIds } = useView();
   const { source } = useSource();
   const { entries, onAddPlaceholder, onChangeEntry, onLinkEntry } = useEntries(rows, properties, spaceId, filterState);
+
+  const [testData, setTestData] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    if (source.type === 'COLLECTION') {
+      setTestData(sortedCollectionItems);
+    }
+  }, [sortedCollectionItems, source.type]);
+   
+
 
   /**
    * There are several types of columns we might be filtering on, some of which aren't actually columns, so have
@@ -299,13 +310,20 @@ export const TableBlock = ({ spaceId }: Props) => {
     // Don't allow reordering if we're not in a state where we can edit
     if (!isEditing || !canEdit) return;
     
-    // For now, this is a placeholder. In a real implementation, you'd need to:
-    // 1. Update the order in your data model
-    // 2. Persist the changes to your backend
-    // 3. Optimistically update the UI
-    console.log(`Moving item from position ${oldIndex} to ${newIndex}`);
-    
-    // The actual implementation would depend on your data model and backend
+    // Call the reorderCollectionItems function if it's a collection
+    if (source.type === 'COLLECTION' && sortedCollectionItems) {
+      // Get the items array 
+      const itemArray = [...sortedCollectionItems];
+      
+      // Move the item from oldIndex to newIndex
+      const [movedItem] = itemArray.splice(oldIndex, 1);
+      itemArray.splice(newIndex, 0, movedItem);
+      
+      // Update the order in the database
+      reorderCollectionItems(itemArray);
+    } else {
+      // Other source types don't support reordering yet
+    }
   };
 
   let EntriesComponent = (
@@ -323,13 +341,70 @@ export const TableBlock = ({ spaceId }: Props) => {
   );
 
   if (view === 'LIST') {
-    EntriesComponent = (
+    EntriesComponent = isEditing && source.type === 'COLLECTION' ? (
+      <Reorder.Group 
+        axis="y" 
+        values={entries} 
+        onReorder={(reorderedItems) => {
+          // Find the old index and new index to call handleReorderItems
+          if (reorderedItems.length === entries.length) {
+            const oldToNewIndices = entries.map((entry, oldIndex) => {
+              const newIndex = reorderedItems.findIndex(item => item.entityId === entry.entityId);
+              return { oldIndex, newIndex, entityId: entry.entityId };
+            });
+            
+            // Find the item that moved
+            const movedItem = oldToNewIndices.find(item => item.oldIndex !== item.newIndex);
+            if (movedItem) {
+              handleReorderItems(movedItem.oldIndex, movedItem.newIndex);
+            }
+          }
+        }}
+        className="flex w-full flex-col space-y-4"
+      >
+        {entries.map((row) => {          
+          return (
+            <Reorder.Item
+              key={row.entityId}
+              value={row}
+              drag
+              dragListener={isEditing}
+              as="div"
+              style={{ touchAction: "none" }}
+              className="group"
+            >
+              <div className="relative flex items-center">
+                <div className="absolute left-0 w-6 flex-shrink-0 flex items-center justify-center z-10 cursor-move opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                  <div className="text-grey-04 hover:text-text">
+                    <DragHandle />
+                  </div>
+                </div>
+                <div className="pl-6 w-full">
+                  <TableBlockListItem
+                    isEditing={isEditing}
+                    columns={row.columns}
+                    currentSpaceId={spaceId}
+                    rowEntityId={row.entityId}
+                    isPlaceholder={Boolean(row.placeholder)}
+                    onChangeEntry={onChangeEntry}
+                    onLinkEntry={onLinkEntry}
+                    properties={propertiesSchema}
+                    relationId={row.columns[SystemIds.NAME_ATTRIBUTE]?.relationId}
+                    source={source}
+                  />
+                </div>
+              </div>
+            </Reorder.Item>
+          );
+        })}
+      </Reorder.Group>
+    ) : (
       <div className="flex w-full flex-col space-y-4">
-        {entries.map((row, index: number) => {
+        {entries.map((row, index: number) => {          
           return (
             <TableBlockListItem
-              isEditing={isEditing}
               key={`${row.entityId}-${index}`}
+              isEditing={isEditing}
               columns={row.columns}
               currentSpaceId={spaceId}
               rowEntityId={row.entityId}
@@ -347,23 +422,76 @@ export const TableBlock = ({ spaceId }: Props) => {
   }
 
   if (view === 'GALLERY') {
-    EntriesComponent = (
+    EntriesComponent = isEditing && source.type === 'COLLECTION' ? (
+      <div className="grid grid-cols-3 gap-x-4 gap-y-10">
+        <Reorder.Group 
+          values={entries} 
+          onReorder={(reorderedItems) => {
+            // Find the old index and new index to call handleReorderItems
+            if (reorderedItems.length === entries.length) {
+              const oldToNewIndices = entries.map((entry, oldIndex) => {
+                const newIndex = reorderedItems.findIndex(item => item.entityId === entry.entityId);
+                return { oldIndex, newIndex, entityId: entry.entityId };
+              });
+              
+              // Find the item that moved
+              const movedItem = oldToNewIndices.find(item => item.oldIndex !== item.newIndex);
+              if (movedItem) {
+                handleReorderItems(movedItem.oldIndex, movedItem.newIndex);
+              }
+            }
+          }}
+          className="contents" // This makes the Reorder.Group not affect the grid layout
+        >
+          {entries.map((row) => {          
+            return (
+              <Reorder.Item
+                key={row.entityId}
+                value={row}
+                as="div"
+                drag
+                dragListener={isEditing}
+                style={{ touchAction: "none" }}
+                className="relative group pl-6"
+              >
+                <div className="absolute left-0 top-1/2 transform -translate-y-1/2 z-10 bg-white/90 rounded-full p-1 shadow-sm cursor-move opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                  <DragHandle />
+                </div>
+                <TableBlockGalleryItem
+                  rowEntityId={row.entityId}
+                  isEditing={isEditing}
+                  columns={row.columns}
+                  currentSpaceId={spaceId}
+                  onChangeEntry={onChangeEntry}
+                  onLinkEntry={onLinkEntry}
+                  isPlaceholder={Boolean(row.placeholder)}
+                  properties={propertiesSchema}
+                  relationId={row.columns[SystemIds.NAME_ATTRIBUTE]?.relationId}
+                  source={source}
+                />
+              </Reorder.Item>
+            );
+          })}
+        </Reorder.Group>
+      </div>
+    ) : (
       <div className="grid grid-cols-3 gap-x-4 gap-y-10">
         {entries.map((row, index: number) => {
           return (
-            <TableBlockGalleryItem
-              key={`${row.entityId}-${index}`}
-              rowEntityId={row.entityId}
-              isEditing={isEditing}
-              columns={row.columns}
-              currentSpaceId={spaceId}
-              onChangeEntry={onChangeEntry}
-              onLinkEntry={onLinkEntry}
-              isPlaceholder={Boolean(row.placeholder)}
-              properties={propertiesSchema}
-              relationId={row.columns[SystemIds.NAME_ATTRIBUTE]?.relationId}
-              source={source}
-            />
+            <div key={`${row.entityId}-${index}`} className="w-full">
+              <TableBlockGalleryItem
+                rowEntityId={row.entityId}
+                isEditing={isEditing}
+                columns={row.columns}
+                currentSpaceId={spaceId}
+                onChangeEntry={onChangeEntry}
+                onLinkEntry={onLinkEntry}
+                isPlaceholder={Boolean(row.placeholder)}
+                properties={propertiesSchema}
+                relationId={row.columns[SystemIds.NAME_ATTRIBUTE]?.relationId}
+                source={source}
+              />
+            </div>
           );
         })}
       </div>
