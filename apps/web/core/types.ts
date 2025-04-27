@@ -9,12 +9,13 @@ export type ValueType =
   | 'TEXT'
   | 'URL'
   | 'TIME'
+  | 'CHECKBOX'
   | 'NUMBER'
   // | GEO_LOCATION
-  | 'CHECKBOX';
+  | 'PLACE';
 
 export type Value = {
-  type: 'TEXT' | 'URL' | 'TIME' | 'CHECKBOX' | 'NUMBER';
+  type: 'TEXT' | 'URL' | 'TIME' | 'CHECKBOX' | 'NUMBER' | 'PLACE';
   value: string;
   options?: TripleValueOptions;
 };
@@ -101,18 +102,26 @@ export type ImageRelationRenderableProperty = {
   type: 'IMAGE';
 } & RelationPropertyProperties;
 
-export type RelationRenderableProperty = BaseRelationRenderableProperty | ImageRelationRenderableProperty;
+export type PlaceRelationRenderableProperty = {
+  type: 'PLACE';
+} & RelationPropertyProperties;
+
+export type RelationRenderableProperty =
+  | BaseRelationRenderableProperty
+  | ImageRelationRenderableProperty
+  | PlaceRelationRenderableProperty;
 
 export type TripleRenderableProperty = NativeRenderableProperty;
 export type RenderableProperty =
   | TripleRenderableProperty
   | BaseRelationRenderableProperty
-  | ImageRelationRenderableProperty;
+  | ImageRelationRenderableProperty
+  | PlaceRelationRenderableProperty;
 
 // The types of renderables don't map 1:1 to the triple value types. We might
 // also render relations with a specific type, e.g., an Image entity or a
 // Person entity, etc.
-export type SwitchableRenderableType = 'TEXT' | 'RELATION' | 'URL' | 'TIME' | 'IMAGE' | 'CHECKBOX' | 'NUMBER';
+export type SwitchableRenderableType = 'TEXT' | 'RELATION' | 'URL' | 'TIME' | 'IMAGE' | 'CHECKBOX' | 'NUMBER' | 'PLACE';
 
 export type ReviewState =
   | 'idle'

@@ -218,6 +218,31 @@ export const getRenderableTypeSelectorOptions = (
           placeholder: true,
         }),
     },
+    {
+      label: (
+        <div className="flex items-center gap-2">
+          <IconWrapper>
+            {/* Change icon to appropriate one */}
+            <Relation />
+          </IconWrapper>
+          <p>Place</p>
+        </div>
+      ),
+      value: 'PLACE' as const,
+      onClick: () =>
+        onSelect({
+          type: 'PLACE',
+          entityId: renderable.entityId,
+          entityName: renderable.entityName,
+          attributeId: renderable.attributeId,
+          attributeName: renderable.attributeName,
+          value: '',
+          relationId: '',
+          valueName: null,
+          spaceId: renderable.spaceId,
+          placeholder: true,
+        }),
+    },
   ];
 };
 

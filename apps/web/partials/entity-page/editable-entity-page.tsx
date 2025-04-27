@@ -35,6 +35,7 @@ import { NumberField } from '~/design-system/editable-fields/number-field';
 import { WebUrlField } from '~/design-system/editable-fields/web-url-field';
 import { Create } from '~/design-system/icons/create';
 import { Trash } from '~/design-system/icons/trash';
+import { InputPlace } from '~/design-system/input-address';
 import { PrefetchLink as Link } from '~/design-system/prefetch-link';
 import { SelectEntity } from '~/design-system/select-entity';
 import { SelectEntityAsPopover } from '~/design-system/select-entity-dialog';
@@ -80,6 +81,10 @@ export function EditableEntityPage({ id, spaceId, triples: serverTriples }: Prop
             const firstRenderable = renderables[0];
             const renderableType = firstRenderable.type;
 
+            if (renderableType === 'PLACE') {
+              console.log(renderables);
+            }
+
             // @TODO: We can abstract this away. We also don't need to pass in the first renderable to options func.
             const selectorOptions = getRenderableTypeSelectorOptions(
               firstRenderable,
@@ -109,7 +114,7 @@ export function EditableEntityPage({ id, spaceId, triples: serverTriples }: Prop
                     }
                   }}
                 />
-                {renderableType === 'RELATION' || renderableType === 'IMAGE' ? (
+                {renderableType === 'RELATION' || renderableType === 'IMAGE' || renderableType === 'PLACE' ? (
                   <RelationsGroup
                     key={attributeId}
                     relations={renderables as RelationRenderableProperty[]}
@@ -118,7 +123,6 @@ export function EditableEntityPage({ id, spaceId, triples: serverTriples }: Prop
                 ) : (
                   <TriplesGroup key={attributeId} triples={renderables as TripleRenderableProperty[]} />
                 )}
-
                 <div className="absolute right-0 top-6 flex items-center gap-1">
                   {/* Entity renderables only exist on Relation entities and are not changeable to another renderable type */}
                   <>
@@ -419,6 +423,10 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
               />
             </div>
           );
+        }
+
+        if (renderableType === 'PLACE') {
+          return <InputPlace spaceId={spaceId} />;
         }
 
         return (
