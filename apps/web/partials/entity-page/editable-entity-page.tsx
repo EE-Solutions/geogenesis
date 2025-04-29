@@ -92,6 +92,15 @@ export function EditableEntityPage({ id, spaceId, triples: serverTriples }: Prop
               send
             );
 
+            // Hide cover/avatar property, as user can upload cover using upload icon on top placeholder
+            if (
+              (renderableType === 'IMAGE' && firstRenderable.attributeId === '7YHk6qYkNDaAtNb8GwmysF') ||
+              (renderableType === 'IMAGE' && firstRenderable.attributeId === '399xP4sGWSoepxeEnp3UdR') ||
+              (renderableType === 'RELATION' && firstRenderable.attributeId === 'Jfmby78N4BCseZinBmdVov')
+            ) {
+              return null;
+            }
+
             return (
               <div key={`${id}-${attributeId}`} className="relative break-words">
                 <EditableAttribute
@@ -245,7 +254,7 @@ type RelationsGroupProps = {
   properties?: Record<string, PropertySchema>;
 };
 
-function RelationsGroup({ relations, properties }: RelationsGroupProps) {
+export function RelationsGroup({ relations, properties }: RelationsGroupProps) {
   const { id, name, spaceId } = useEntityPageStore();
 
   const send = useEditEvents({
@@ -264,7 +273,7 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
   const relationValueTypes = property?.relationValueTypes;
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="box-border flex flex-wrap items-center gap-1">
       {relations.map(r => {
         const relationId = r.relationId;
         const relationName = r.valueName;
@@ -422,7 +431,7 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
         }
 
         return (
-          <div key={`relation-${relationId}-${relationValue}`} className="mt-1">
+          <div key={`relation-${relationId}-${relationValue}`}>
             <LinkableRelationChip
               isEditing
               onDelete={() => {
@@ -442,7 +451,7 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
         );
       })}
       {!hasPlaceholders && typeOfRenderableType === 'RELATION' && (
-        <div className="mt-1">
+        <div>
           <SelectEntityAsPopover
             key={JSON.stringify(relationValueTypes)}
             trigger={<SquareButton icon={<Create />} />}
