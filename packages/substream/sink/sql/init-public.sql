@@ -142,7 +142,7 @@ CREATE TABLE public.version_types (
     type_id text NOT NULL REFERENCES public.versions(id)
 );
 
-CREATE TYPE public.triple_value_type as ENUM ('NUMBER', 'TEXT', 'URL', 'CHECKBOX', 'TIME', 'POINT');
+CREATE TYPE public.triple_value_type as ENUM ('NUMBER', 'TEXT', 'URL', 'CHECKBOX', 'TIME', 'POINT', 'PLACE');
 
 CREATE TABLE public.triples (
     PRIMARY KEY (space_id, entity_id, attribute_id, version_id),
