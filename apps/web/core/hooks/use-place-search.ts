@@ -1,5 +1,18 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Duration } from 'effect';
+import * as Effect from 'effect/Effect';
+import * as Either from 'effect/Either';
+
 import { useEffect, useState } from 'react';
 
+import { Subgraph } from '~/core/io';
+import { EntityId } from '~/core/io/schema';
+import { validateEntityId } from '~/core/utils/utils';
+
+import { mergeSearchResult } from '../database/result';
+import { SearchResult } from '../io/dto/search';
+import { E } from '../sync/orm';
+import { useSyncEngine } from '../sync/use-sync-engine';
 import { useDebouncedValue } from './use-debounced-value';
 
 export type Feature = {
@@ -8,11 +21,130 @@ export type Feature = {
   text: string;
 };
 
-export const usePlaceSearch = () => {
+interface SearchOptions {
+  filterByTypes?: string[];
+}
+
+export const usePlaceSearch = ({ filterByTypes }: SearchOptions = {}) => {
   const [query, setQuery] = useState('');
   const [results, setPlacesResults] = useState<Feature[]>([]);
+  const [resultEntities, setResultEntities] = useState<SearchResult[] | undefined>();
   const [isEmpty, setIsEmpty] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  const debouncedQuery = useDebouncedValue(query, 1000);
+
+  const { store } = useSyncEngine();
+  const cache = useQueryClient();
+
+  const maybeEntityId = debouncedQuery.trim();
+
+  // Temporary hardcoded filterByTypes for test purposes
+  const mockFilterByTypes = ['VdTsW1mGiy1XSooJaBBLc4'];
+
+  const { data: resultsEntities, isLoading: isEntitiesLoading } = useQuery({
+    enabled: debouncedQuery !== '',
+    queryKey: ['search', debouncedQuery, mockFilterByTypes],
+    queryFn: async () => {
+      if (query.length === 0) return [];
+
+      const isValidEntityId = validateEntityId(maybeEntityId);
+
+      if (isValidEntityId) {
+        const id = EntityId(maybeEntityId);
+
+        const fetchResultEffect = Effect.either(
+          Effect.tryPromise({
+            try: async () =>
+              await mergeSearchResult({
+                id,
+                store,
+              }),
+
+            catch: error => {
+              console.error('error', error);
+              return new Subgraph.Errors.AbortError();
+            },
+          })
+        );
+
+        const resultOrError = await Effect.runPromise(fetchResultEffect);
+
+        if (Either.isLeft(resultOrError)) {
+          const error = resultOrError.left;
+
+          switch (error._tag) {
+            case 'AbortError':
+              console.log(`abort error`);
+              return [];
+            default:
+              console.error('useSearch error:', String(error));
+              throw error;
+          }
+        }
+
+        return resultOrError.right ? [resultOrError.right] : [];
+      }
+
+      const fetchResultsEffect = Effect.either(
+        Effect.tryPromise({
+          try: async () =>
+            await E.findFuzzy({
+              store,
+              cache,
+              where: {
+                name: {
+                  fuzzy: debouncedQuery,
+                },
+                // Hardcoded
+                types: mockFilterByTypes?.map(t => {
+                  return {
+                    id: {
+                      equals: t,
+                    },
+                  };
+                }),
+              },
+              first: 10,
+              skip: 0,
+            }),
+          catch: error => {
+            console.error('error', error);
+            return new Subgraph.Errors.AbortError();
+          },
+        })
+      );
+
+      const resultOrError = await Effect.runPromise(fetchResultsEffect);
+
+      if (Either.isLeft(resultOrError)) {
+        const error = resultOrError.left;
+
+        switch (error._tag) {
+          case 'AbortError':
+            console.log(`abort error`);
+            return [];
+          default:
+            console.error('useSearch error:', String(error));
+            throw error;
+        }
+      }
+
+      return resultOrError.right;
+    },
+    /**
+     * We don't want to return stale search results. Instead we just
+     * delete the cache after 15 seconds. Otherwise the query might
+     * return a results list that has stale data. This stale data
+     * might get revalidated behind the scenes resulting in layout
+     * shift or confusing results.
+     */
+    gcTime: Duration.toMillis(Duration.seconds(15)),
+  });
+
+  useEffect(() => {
+    setResultEntities(resultsEntities);
+  }, [resultsEntities]);
 
   const handleSearch = async () => {
     if (query === '') {
@@ -39,8 +171,6 @@ export const usePlaceSearch = () => {
     setQuery(value);
   };
 
-  const debouncedQuery = useDebouncedValue(query, 1000);
-
   useEffect(() => {
     handleSearch();
   }, [debouncedQuery]);
@@ -51,5 +181,7 @@ export const usePlaceSearch = () => {
     isLoading,
     query,
     isEmpty,
+    resultEntities,
+    isEntitiesLoading,
   };
 };

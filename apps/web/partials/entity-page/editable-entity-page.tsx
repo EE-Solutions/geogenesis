@@ -426,7 +426,13 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
         }
 
         if (renderableType === 'PLACE') {
-          return <InputPlace spaceId={spaceId} />;
+          return (
+            <InputPlace
+              key={`place-input-${relationId}`}
+              relationValueTypes={relationValueTypes ? relationValueTypes : undefined}
+              spaceId={spaceId}
+            />
+          );
         }
 
         return (
