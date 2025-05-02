@@ -5,6 +5,7 @@ import { pipe } from 'effect';
 import { dedupeWith } from 'effect/Array';
 import { useAtomValue, useSetAtom } from 'jotai';
 import Image from 'next/legacy/image';
+import { Reorder } from 'framer-motion';
 
 import * as React from 'react';
 
@@ -19,6 +20,7 @@ import { useQueryEntitiesAsync, useQueryEntityAsync } from '~/core/sync/use-stor
 import { RenderableProperty } from '~/core/types';
 import { toRenderables } from '~/core/utils/to-renderables';
 import { getImagePath } from '~/core/utils/utils';
+import { useRelationshipIndices } from '~/core/hooks/use-relationship-indices';
 
 import { Checkbox } from '~/design-system/checkbox';
 import { Dots } from '~/design-system/dots';
@@ -27,6 +29,7 @@ import { Eye } from '~/design-system/icons/eye';
 import { EyeHide } from '~/design-system/icons/eye-hide';
 import { LeftArrowLong } from '~/design-system/icons/left-arrow-long';
 import { RelationSmall } from '~/design-system/icons/relation-small';
+import { DragHandle } from '~/design-system/icons/drag-handle';
 import { MenuItem } from '~/design-system/menu';
 
 import { sortRenderables } from '~/partials/entity-page/entity-page-utils';
@@ -150,10 +153,16 @@ function RelationsPropertySelector() {
 function DefaultPropertySelector() {
   const { filterState } = useFilters();
   const { source } = useSource();
+  const { 
+    spaceId, 
+    shownColumnIds, 
+    shownColumnRelations, 
+    reorderShownColumns 
+  } = useView();
 
   const setIsEditingProperties = useSetAtom(editingPropertiesAtom);
 
-  const { data: availableColumns, isLoading } = useQuery({
+  const { data: availableColumns, isLoading: isLoadingColumns } = useQuery({
     queryKey: ['available-columns', filterState],
     queryFn: async () => {
       const schema = await getSchemaFromTypeIds(
@@ -163,6 +172,73 @@ function DefaultPropertySelector() {
       return schema;
     },
   });
+
+  // Create a combined list of columns with display status
+  const combinedColumns = React.useMemo(() => {
+    if (!availableColumns) return [];
+    
+    // Filter out the name column (index 0) from available columns
+    const filteredColumns = availableColumns
+      .filter((column, index) => index !== 0)
+      .map(column => {
+        // Find if this column has a relation in shownColumnRelations
+        const relationForColumn = shownColumnRelations.find(
+          relation => relation.toEntity.id === column.id
+        );
+        
+        return {
+          ...column,
+          // If the column has a relation, use that relation's ID as the dragKey
+          // Otherwise, use a placeholder ID that won't match any relation
+          dragKey: relationForColumn ? relationForColumn.id : `placeholder-${column.id}`,
+          // Include the original relation if it exists (needed for reordering)
+          relation: relationForColumn,
+          // Mark as shown if it's in shownColumnIds
+          isShown: shownColumnIds.includes(column.id)
+        };
+      });
+    
+    return filteredColumns;
+  }, [availableColumns, shownColumnIds, shownColumnRelations]);
+
+  // Create state to track the ordered columns only once on initial render
+  // or when combinedColumns changes significantly (not on every render)
+  const [orderedColumns, setOrderedColumns] = React.useState([]);
+
+  // Update local state only when source data changes meaningfully
+  // Use JSON.stringify to compare deep changes rather than reference changes
+  const combinedColumnsString = JSON.stringify(
+    combinedColumns.map(col => ({ id: col.id, isShown: col.isShown, relId: col.relation?.id }))
+  );
+  
+  React.useEffect(() => {
+    if (combinedColumns.length > 0) {
+      setOrderedColumns(combinedColumns);
+    }
+  }, [combinedColumnsString]);
+
+  // Custom reorder function for UI and to update relations
+  const handleReorder = React.useCallback((newOrder) => {
+    // First update UI immediately
+    setOrderedColumns(newOrder);
+    
+    // Debounce the database update to avoid excessive calls during drag
+    // We use requestAnimationFrame to batch updates with the browser's render cycle
+    requestAnimationFrame(() => {
+      // Only reorder relations that actually exist in the database
+      // (those with a relation property)
+      const relationsToReorder = newOrder
+        .filter(item => item.relation)
+        .map(item => item.relation);
+        
+      // Only update if we actually have relations to reorder
+      if (relationsToReorder.length > 0) {
+        reorderShownColumns(relationsToReorder);
+      }
+    });
+  }, [reorderShownColumns]);
+
+  const isLoading = isLoadingColumns;
 
   if (source.type === 'RELATIONS') {
     return null;
@@ -187,12 +263,37 @@ function DefaultPropertySelector() {
           <span>Back</span>
         </button>
       </MenuItem>
-      {availableColumns?.map((column: Column, index: number) => {
-        // do not show name column
-        if (index === 0) return null;
-
-        return <ToggleColumn key={column.id} column={column} />;
-      })}
+      <div className="px-2 py-1">
+        <p className="text-footnote text-grey-04 mb-2">Drag properties to reorder them</p>
+      </div>
+      <Reorder.Group 
+        as="div" 
+        axis="y" 
+        values={orderedColumns} 
+        onReorder={handleReorder}
+        className="flex flex-col"
+      >
+        {orderedColumns.map((column) => (
+          <Reorder.Item
+            as="div"
+            key={column.dragKey}
+            value={column}
+            className="mb-1 cursor-move"
+          >
+            <div className="flex items-center px-2">
+              {/* Only show drag handle for visible columns with actual relations */}
+              {column.isShown && column.relation && (
+                <div className="p-1 text-grey-04 hover:text-text mr-1">
+                  <DragHandle />
+                </div>
+              )}
+              <div className="flex-1">
+                <ToggleColumn column={column} />
+              </div>
+            </div>
+          </Reorder.Item>
+        ))}
+      </Reorder.Group>
     </>
   );
 }
@@ -307,26 +408,31 @@ function PropertySelector({ entityIds, where }: PropertySelectorProps) {
 }
 
 type ToggleColumnProps = {
-  column: Column;
+  column: Column & { 
+    isShown?: boolean;
+    relation?: any;
+    dragKey?: string;
+  };
 };
 
 function ToggleColumn({ column }: ToggleColumnProps) {
   const { toggleProperty: setColumn, shownColumnIds } = useView();
-  const isShown = shownColumnIds.includes(column.id);
+  const isShown = 'isShown' in column ? column.isShown : shownColumnIds.includes(column.id);
 
   const onToggleColumn = async () => {
     setColumn(column);
   };
 
   return (
-    <MenuItem>
+    <div className="flex w-full items-center justify-between py-2">
+      <span className={cx('flex-1', !isShown && 'text-grey-03')}>{column.name}</span>
       <button
         onClick={onToggleColumn}
-        className={cx('flex w-full items-center justify-between gap-2', !isShown && 'text-grey-03')}
+        className="focus:outline-none"
+        aria-label={isShown ? "Hide column" : "Show column"}
       >
-        <span>{column.name}</span>
         {isShown ? <Eye /> : <EyeHide />}
       </button>
-    </MenuItem>
+    </div>
   );
 }

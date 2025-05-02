@@ -1,8 +1,9 @@
 'use client';
 
-import { GraphUrl, SystemIds } from '@graphprotocol/grc-20';
+import { GraphUrl, SystemIds, Relation as R } from '@graphprotocol/grc-20';
 import { Image } from '@graphprotocol/grc-20';
 import { INITIAL_RELATION_INDEX_VALUE } from '@graphprotocol/grc-20/constants';
+import { Reorder } from 'framer-motion';
 
 import * as React from 'react';
 
@@ -12,6 +13,7 @@ import { useEditEvents } from '~/core/events/edit-events';
 import { useProperties } from '~/core/hooks/use-properties';
 import { useRelationship } from '~/core/hooks/use-relationship';
 import { useRenderables } from '~/core/hooks/use-renderables';
+import { useRelationshipIndices } from '~/core/hooks/use-relationship-indices';
 import { ID } from '~/core/id';
 import { EntityId } from '~/core/io/schema';
 import { useEntityPageStore } from '~/core/state/entity-page-store/entity-store';
@@ -44,6 +46,7 @@ import { DateFormatDropdown } from './date-format-dropdown';
 import { getRenderableTypeSelectorOptions } from './get-renderable-type-options';
 import { NumberOptionsDropdown } from './number-options-dropdown';
 import { RenderableTypeDropdown } from './renderable-type-dropdown';
+import { useQueryEntities } from '~/core/sync/use-store';
 
 interface Props {
   triples: ITriple[];
@@ -262,19 +265,34 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
   const typeOfRenderableType = relations[0].type;
   const property = properties?.[typeOfId];
   const relationValueTypes = property?.relationValueTypes;
+  const filterByTypes = property?.relationValueTypes?.map(r => r.typeId);
+  
+  // Use the new hook to manage relationship indices
+  const { 
+    sortedItems: relationItems, 
+    reorderItems: handleReorder,
+    isLoading 
+  } = useRelationshipIndices(relations, { spaceId });
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {relations.map(r => {
-        const relationId = r.relationId;
-        const relationName = r.valueName;
-        const renderableType = r.type;
-        const relationValue = r.value;
+      <Reorder.Group 
+        as="span" 
+        axis="x" 
+        values={relationItems} 
+        onReorder={handleReorder}
+        className="flex flex-wrap gap-2 items-center"
+      >
+        {!isLoading && relationItems.map((r) => {
+          const relationId = r.relationId;
+          const relationName = r.valueName;
+          const renderableType = r.type;
+          const relationValue = r.value;
 
-        if (renderableType === 'IMAGE' && r.placeholder === true) {
-          return (
-            <div key={`relation-upload-image-${relationId}`}>
-              <PageImageField
+          if (renderableType === 'IMAGE' && r.placeholder === true) {
+            return (
+              <div key={`relation-upload-image-${relationId}`}>
+                <PageImageField
                 onImageChange={imageSrc => {
                   const { id: imageId, ops } = Image.make({ cid: imageSrc });
                   const [createRelationOp, setTripleOp] = ops;
@@ -417,30 +435,49 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
                 }}
                 variant="fixed"
               />
-            </div>
-          );
-        }
-
-        return (
-          <div key={`relation-${relationId}-${relationValue}`} className="mt-1">
-            <LinkableRelationChip
-              isEditing
-              onDelete={() => {
-                send({
-                  type: 'DELETE_RELATION',
-                  payload: {
-                    renderable: r,
-                  },
-                });
+              </div>
+            );
+          }
+ 
+          return (
+            <Reorder.Item
+              drag
+              key={relationId}
+              value={r}
+              as="span"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ 
+                opacity: 1, 
+                scale: 1,
+                transition: { 
+                  type: 'spring',
+                  stiffness: 300, 
+                  damping: 20 
+                } 
               }}
-              entityHref={NavUtils.toEntity(spaceId, relationValue ?? '')}
-              relationHref={NavUtils.toEntity(spaceId, relationId)}
+              exit={{ opacity: 0, scale: 0.8 }}
+              style={{ touchAction: 'none' }}
             >
-              {relationName ?? relationValue}
-            </LinkableRelationChip>
-          </div>
-        );
-      })}
+                <LinkableRelationChip
+                  isEditing
+                  onDelete={() => {
+                    send({
+                      type: 'DELETE_RELATION',
+                      payload: {
+                        renderable: r,
+                      },
+                    });
+                  }}
+                  entityHref={NavUtils.toEntity(spaceId, relationValue ?? '')}
+                  relationHref={NavUtils.toEntity(spaceId, relationId)}
+                >
+                  {relationName ?? relationValue}
+                </LinkableRelationChip>
+            </Reorder.Item>
+          );
+        })}
+      </Reorder.Group>
+      
       {!hasPlaceholders && typeOfRenderableType === 'RELATION' && (
         <div className="mt-1">
           <SelectEntityAsPopover
