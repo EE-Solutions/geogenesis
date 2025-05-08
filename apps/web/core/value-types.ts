@@ -8,6 +8,7 @@ export const VALUE_TYPE_IDS: Record<TripleValueType, ValueTypeId> = {
   URL: SystemIds.URL,
   CHECKBOX: SystemIds.CHECKBOX,
   NUMBER: SystemIds.NUMBER,
+  PLACE: SystemIds.PLACE,
 };
 
 export type FilterableValueType = TripleValueType | 'RELATION' | 'IMAGE';
@@ -20,6 +21,7 @@ export const VALUE_TYPES: Record<ValueTypeId, FilterableValueType> = {
   [SystemIds.RELATION]: 'RELATION',
   [SystemIds.TEXT]: 'TEXT',
   [SystemIds.URL]: 'URL',
+  [SystemIds.PLACE]: 'PLACE',
 };
 
 export const VALUE_TYPE_NAMES: Record<ValueTypeId, string> = {

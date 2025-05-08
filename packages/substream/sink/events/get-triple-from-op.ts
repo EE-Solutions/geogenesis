@@ -28,6 +28,7 @@ export function getTripleFromOp(
       attribute_id: attribute,
       attribute_version_id: attributeVersionId,
       value_type,
+
       created_at: block.timestamp,
       created_at_block: block.blockNumber,
       format_option: value.options?.format,
