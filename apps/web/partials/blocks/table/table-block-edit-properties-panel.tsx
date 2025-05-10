@@ -247,8 +247,17 @@ function DefaultPropertySelector() {
     return resultColumns;
   }, [combinedColumns, shownColumnRelations]);
 
+  // Define the type for our column items
+  type ColumnItem = {
+    id: string;
+    name: string | null;
+    dragKey: string;
+    relation?: any;
+    isShown?: boolean;
+  };
+
   // Custom reorder function for UI and to update relations
-  const handleReorder = React.useCallback((newOrder) => {
+  const handleReorder = React.useCallback((newOrder: ColumnItem[]) => {
     // Extract relations that actually exist in the database in their new order
     const relationsToReorder = newOrder
       .filter(item => item.relation)

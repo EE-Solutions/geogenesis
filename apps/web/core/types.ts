@@ -217,6 +217,7 @@ export type Cell = {
   renderedPropertyId?: string;
   collectionId?: string;
   relationId?: string;
+  index?: string;  // Added for relation ordering
 };
 
 export type Row = {

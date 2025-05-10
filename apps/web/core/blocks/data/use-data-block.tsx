@@ -20,36 +20,7 @@ import { usePagination } from './use-pagination';
 import { useRelationsBlock } from './use-relations-block';
 import { useSource } from './use-source';
 import { useView } from './use-view';
-
-// Define a local sorting function since we're having module import issues
-const sortColumnsByIndex = (columns: any[]) => {
-  if (!columns.length) return columns;
-
-  // First make a copy to avoid mutating the original
-  const sortableColumns = [...columns];
-
-  // Check if we have any columns with indices
-  const hasAnyIndices = sortableColumns.some(col => !!col.index);
-
-  // If no columns have indices, return them in original order
-  if (!hasAnyIndices) return sortableColumns;
-
-  // Sort columns with indices, preserving relative positioning
-  return sortableColumns.sort((a, b) => {
-    const indexA = a.index || '';
-    const indexB = b.index || '';
-
-    // If both have indices, sort by them
-    if (indexA && indexB) return indexA.localeCompare(indexB, undefined, { numeric: true });
-
-    // If only one has index, put the one with index first
-    if (indexA && !indexB) return -1;
-    if (!indexA && indexB) return 1;
-
-    // Default to id sorting for consistent order
-    return a.relationId.localeCompare(b.relationId);
-  });
-};
+import { sortByIndex, reorderItems } from '~/core/utils/relation-ordering';
 
 export const PAGE_SIZE = 9;
 
@@ -93,23 +64,20 @@ export function useDataBlock() {
     [collectionRelations]
   );
 
-  // Sort items by index directly
+  // Sort items by index using the shared utility
   const sortedCollectionItems = React.useMemo(() =>
-    sortColumnsByIndex(collectionItemsWithRelationId),
+    sortByIndex(collectionItemsWithRelationId),
     [collectionItemsWithRelationId]
   );
 
-  // Local implementation of reorderColumns
-  const reorderCollectionItems = React.useCallback((reorderedItems) => {
+  // Use the shared utility for reordering items
+  const reorderCollectionItems = React.useCallback((reorderedItems: Array<{ relationId: string; index?: string; [key: string]: any }>) => {
     if (!reorderedItems.length) return;
 
-    // Use the view hook's reorderShownColumns implementation
-    // Since view already has this functionality, we can simply call the function directly
-    console.log('Would reorder collection items:', reorderedItems);
-
-    // This would be the place to implement reordering logic if needed
-    // For now, we'll just log that reordering was attempted
-  }, []);
+    console.log('Reordering collection items using shared utility');
+    // Delegate to our shared utility function
+    reorderItems(reorderedItems, spaceId, SystemIds.RELATION_INDEX, 'Index');
+  }, [spaceId]);
 
   // We no longer have a loading state since sort is synchronous
   const isLoadingCollectionIndices = false;

@@ -46,7 +46,7 @@ import { DateFormatDropdown } from './date-format-dropdown';
 import { getRenderableTypeSelectorOptions } from './get-renderable-type-options';
 import { NumberOptionsDropdown } from './number-options-dropdown';
 import { RenderableTypeDropdown } from './renderable-type-dropdown';
-import { reorderRelations } from './reorder-relations';
+import { reorderRelations } from '~/core/utils/relation-ordering';
 import { useQueryEntities } from '~/core/sync/use-store';
 
 interface Props {

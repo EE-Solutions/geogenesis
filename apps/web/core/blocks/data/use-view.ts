@@ -10,36 +10,7 @@ import { EntityId } from '~/core/io/schema';
 import { useQueryEntities, useQueryEntity } from '~/core/sync/use-store';
 import { Relation } from '~/core/types';
 import { getImagePath } from '~/core/utils/utils';
-// Define local functions for column sorting and reordering instead of importing
-// This solves the module export issues
-const sortColumnsByIndex = (columns: any[]) => {
-  if (!columns.length) return columns;
-
-  // First make a copy to avoid mutating the original
-  const sortableColumns = [...columns];
-
-  // Check if we have any columns with indices
-  const hasAnyIndices = sortableColumns.some(col => !!col.index);
-
-  // If no columns have indices, return them in original order
-  if (!hasAnyIndices) return sortableColumns;
-
-  // Sort columns with indices, preserving relative positioning
-  return sortableColumns.sort((a, b) => {
-    const indexA = a.index || '';
-    const indexB = b.index || '';
-
-    // If both have indices, sort by them
-    if (indexA && indexB) return indexA.localeCompare(indexB, undefined, { numeric: true });
-
-    // If only one has index, put the one with index first
-    if (indexA && !indexB) return -1;
-    if (!indexA && indexB) return 1;
-
-    // Default to id sorting for consistent order
-    return a.relationId.localeCompare(b.relationId);
-  });
-};
+import { sortByIndex, reorderItems } from '~/core/utils/relation-ordering';
 
 import { useDataBlockInstance } from './use-data-block';
 import { useMapping } from './use-mapping';
@@ -81,116 +52,22 @@ export function useView() {
     relationId: relation.id
   })), [shownColumnRelations]);
 
-  // Sort columns by their index directly instead of using useRelationshipIndices
+  // Sort columns by their index using our central utility
   const sortedShownColumnRelations = React.useMemo(() =>
-    sortColumnsByIndex(memoizedRelations)
+    sortByIndex(memoizedRelations)
   , [memoizedRelations]);
 
-  // Local implementation of reorderColumns to avoid module import issues
-  const reorderColumns = React.useCallback((items: any[], targetSpaceId: string) => {
+  // Wrapper around the central reorderItems utility
+  const reorderColumns = React.useCallback((items: Array<{ relationId: string; index?: string; [key: string]: any }>, targetSpaceId: string) => {
     if (!items.length) return;
 
-    console.log('Reordering columns:', items);
-
-    // Get current indices
-    const relationIndices: Record<string, string> = {};
-    items.forEach(item => {
-      if (item.index) {
-        relationIndices[item.relationId] = item.index;
-      }
-    });
-
-    // Check for duplicate indices
-    const indices = Object.values(relationIndices);
-    const hasDuplicateIndices = indices.length > 0 &&
-      indices.some((index, i, arr) => arr.indexOf(index) !== i);
-
-    // Handle reordering based on whether we have duplicate indices
-    if (hasDuplicateIndices || indices.length === 0) {
-      // Create new indices for all items
-      try {
-        // First item
-        const firstItemOrdering = R.reorder({
-          relationId: items[0].relationId,
-          beforeIndex: undefined,
-          afterIndex: undefined,
-        });
-
-        // Update the first item
-        DB.upsert({
-          entityId: items[0].relationId,
-          attributeId: SystemIds.RELATION_INDEX,
-          attributeName: 'Index',
-          entityName: null,
-          value: firstItemOrdering.triple.value,
-        }, targetSpaceId);
-
-        // Process the rest
-        for (let i = 1; i < items.length; i++) {
-          const currentItem = items[i];
-          const previousItem = items[i - 1];
-
-          // Reorder with previous item's index
-          const currentOrdering = R.reorder({
-            relationId: currentItem.relationId,
-            beforeIndex: firstItemOrdering.triple.value.value,
-            afterIndex: undefined,
-          });
-
-          // Update database
-          DB.upsert({
-            entityId: currentItem.relationId,
-            attributeId: SystemIds.RELATION_INDEX,
-            attributeName: 'Index',
-            entityName: null,
-            value: currentOrdering.triple.value,
-          }, targetSpaceId);
-        }
-      } catch (error) {
-        console.error('Error fixing column indices:', error);
-      }
-    } else {
-      // Update only items that need it
-      items.forEach((item, arrayIndex) => {
-        const beforeItem = arrayIndex > 0 ? items[arrayIndex - 1] : undefined;
-        const afterItem = arrayIndex < items.length - 1 ? items[arrayIndex + 1] : undefined;
-
-        const beforeIndex = beforeItem ? relationIndices[beforeItem.relationId] : undefined;
-        const afterIndex = afterItem ? relationIndices[afterItem.relationId] : undefined;
-        const currentIndex = relationIndices[item.relationId];
-
-        // Check if update is needed
-        const needsUpdate =
-          !currentIndex ||
-          (beforeIndex && currentIndex && beforeIndex > currentIndex) ||
-          (afterIndex && currentIndex && currentIndex > afterIndex) ||
-          (beforeIndex === afterIndex && beforeIndex !== undefined);
-
-        if (!needsUpdate) return;
-
-        try {
-          const newTripleOrdering = R.reorder({
-            relationId: item.relationId,
-            beforeIndex: beforeIndex,
-            afterIndex: afterIndex,
-          });
-
-          DB.upsert({
-            entityId: item.relationId,
-            attributeId: SystemIds.RELATION_INDEX,
-            attributeName: 'Index',
-            entityName: null,
-            value: newTripleOrdering.triple.value,
-          }, targetSpaceId);
-        } catch (error) {
-          console.error('Error reordering column:', error);
-        }
-      });
-    }
+    console.log('Reordering columns using shared utility');
+    // Simply delegate to our shared utility function
+    reorderItems(items, targetSpaceId, SystemIds.RELATION_INDEX, 'Index');
   }, []);
 
   // Create reorder function that updates database
-  const reorderShownColumns = React.useCallback((reorderedItems) => {
+  const reorderShownColumns = React.useCallback((reorderedItems: Array<{ relationId: string; index?: string; [key: string]: any }>) => {
     reorderColumns(reorderedItems, spaceId);
   }, [reorderColumns, spaceId]);
 
@@ -390,6 +267,8 @@ export function useView() {
     mapping,
     // Add the reorder function to the return value
     reorderShownColumns,
+    // Add spaceId to the returned object for convenience
+    spaceId,
   };
 }
 
