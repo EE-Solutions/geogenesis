@@ -11,6 +11,7 @@ import { useQueryEntities, useQueryEntity } from '~/core/sync/use-store';
 import { Relation } from '~/core/types';
 import { getImagePath } from '~/core/utils/utils';
 import { sortByIndex, reorderItems } from '~/core/utils/relation-ordering';
+import { debounce } from '~/utils/debounce';
 
 import { useDataBlockInstance } from './use-data-block';
 import { useMapping } from './use-mapping';
@@ -57,14 +58,38 @@ export function useView() {
     sortByIndex(memoizedRelations)
   , [memoizedRelations]);
 
+  // Create debounced version of reorderItems
+  const debouncedReorderItems = React.useMemo(() =>
+    debounce(
+      (
+        items: Array<{ relationId: string; index?: string; [key: string]: any }>,
+        spaceId: string,
+        attributeId: string = SystemIds.RELATION_INDEX,
+        attributeName: string = 'Index'
+      ) => {
+        console.log('Debounced reorderItems called with', items.length, 'items');
+        reorderItems(items, spaceId, attributeId, attributeName);
+      },
+      100 // 100ms debounce time
+    ),
+    []
+  );
+
   // Wrapper around the central reorderItems utility
   const reorderColumns = React.useCallback((items: Array<{ relationId: string; index?: string; [key: string]: any }>, targetSpaceId: string) => {
     if (!items.length) return;
 
-    console.log('Reordering columns using shared utility');
-    // Simply delegate to our shared utility function
-    reorderItems(items, targetSpaceId, SystemIds.RELATION_INDEX, 'Index');
-  }, []);
+    // Force update by resetting indices for all items
+    // This bypasses the !needsUpdate optimization
+    const itemsWithoutIndices = items.map(item => ({
+      ...item,
+      index: undefined  // Clear indices to force updates
+    }));
+
+    console.log('Reordering columns using shared utility - forcing update (debounced)');
+    // Use the debounced version with modified items array to ensure updates occur
+    debouncedReorderItems(itemsWithoutIndices, targetSpaceId, SystemIds.RELATION_INDEX, 'Index');
+  }, [debouncedReorderItems]);
 
   // Create reorder function that updates database
   const reorderShownColumns = React.useCallback((reorderedItems: Array<{ relationId: string; index?: string; [key: string]: any }>) => {

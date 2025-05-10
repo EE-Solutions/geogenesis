@@ -35,25 +35,49 @@ export function sortByIndex<T extends OrderableItem>(items: T[]): T[] {
     return sortableItems;
   }
   
+  // Track original position for stable sorting
+  const itemsWithPosition = sortableItems.map((item, originalIndex) => ({
+    item,
+    originalIndex
+  }));
+
   // Sort items with indices, preserving relative positioning
-  return sortableItems.sort((a, b) => {
-    const indexA = a.index || '';
-    const indexB = b.index || '';
-    
-    // If both have indices, sort by them
-    if (indexA && indexB) {
-      return indexA.localeCompare(indexB, undefined, { numeric: true });
-    }
-    
-    // If only one has index, put the one with index first
-    if (indexA && !indexB) return -1;
-    if (!indexA && indexB) return 1;
-    
-    // Default to id sorting for consistent order
-    const idA = a.relationId || a.id || '';
-    const idB = b.relationId || b.id || '';
-    return idA.localeCompare(idB);
-  });
+  const sortedItems = itemsWithPosition
+    .sort((a, b) => {
+      const itemA = a.item;
+      const itemB = b.item;
+
+      const indexA = itemA.index || '';
+      const indexB = itemB.index || '';
+
+      // If both have indices, sort by them
+      if (indexA && indexB) {
+        const compareResult = indexA.localeCompare(indexB, undefined, { numeric: true });
+        // If indices are equal, maintain original order for stability
+        return compareResult !== 0 ? compareResult : a.originalIndex - b.originalIndex;
+      }
+
+      // If only one has index, put the one with index first
+      if (indexA && !indexB) return -1;
+      if (!indexA && indexB) return 1;
+
+      // Default to id sorting for consistent order
+      const idA = itemA.relationId || itemA.id || '';
+      const idB = itemB.relationId || itemB.id || '';
+
+      // If both have ids, sort by them
+      if (idA && idB) {
+        const compareResult = idA.localeCompare(idB);
+        // If ids are equal, maintain original order for stability
+        return compareResult !== 0 ? compareResult : a.originalIndex - b.originalIndex;
+      }
+
+      // Maintain original order when ids are missing
+      return a.originalIndex - b.originalIndex;
+    })
+    .map(wrapper => wrapper.item);
+
+  return sortedItems;
 }
 
 /**
@@ -75,6 +99,7 @@ export function reorderItems<T extends OrderableItem>(
   }
 
   console.log(`Reordering ${items.length} items in space ${spaceId}`);
+  console.log('reorder Items:', items);
   
   // Step 1: Get all current indices
   const itemIndices: Record<string, string> = {};
@@ -85,13 +110,17 @@ export function reorderItems<T extends OrderableItem>(
     }
   });
   
-  // Step 2: Check for duplicate indices
+  // Step 2: Check for issues with indices
   const indices = Object.values(itemIndices);
-  const hasDuplicateIndices = indices.length > 0 && 
+  const hasDuplicateIndices = indices.length > 0 &&
     indices.some((index, i, arr) => arr.indexOf(index) !== i);
+
+  // Check if all items have valid IDs and indices
+  const hasMissingIds = items.some(item => !(item.relationId || item.id));
+  const hasMissingIndices = indices.length < items.length;
   
-  // Step 3a: Handle duplicate indices by creating new indices for all items
-  if (hasDuplicateIndices || indices.length === 0) {
+  // Step 3a: Handle problematic indices by creating new indices for all items
+  if (hasDuplicateIndices || hasMissingIndices || hasMissingIds || indices.length === 0) {
     // Create new indices for each item sequentially
     const tempIndices: Record<string, string> = {};
     
@@ -199,6 +228,7 @@ export function reorderItems<T extends OrderableItem>(
         
         // Skip if no update is needed
         if (!needsUpdate) {
+          console.log('No update needed for item', itemId);
           return;
         }
         
@@ -220,6 +250,8 @@ export function reorderItems<T extends OrderableItem>(
           console.error('Error reordering item:', error);
         }
       });
+    } else {
+      console.log('No changes detected in order, skipping update');
     }
   }
 }

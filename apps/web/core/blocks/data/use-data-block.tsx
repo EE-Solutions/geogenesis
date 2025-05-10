@@ -21,6 +21,7 @@ import { useRelationsBlock } from './use-relations-block';
 import { useSource } from './use-source';
 import { useView } from './use-view';
 import { sortByIndex, reorderItems } from '~/core/utils/relation-ordering';
+import { debounce } from '~/utils/debounce';
 
 export const PAGE_SIZE = 9;
 
@@ -70,14 +71,31 @@ export function useDataBlock() {
     [collectionItemsWithRelationId]
   );
 
-  // Use the shared utility for reordering items
+  // Create a debounced version of reorderItems
+  const debouncedReorderItems = React.useMemo(() =>
+    debounce(
+      (
+        items: Array<{ relationId: string; index?: string; [key: string]: any }>,
+        itemSpaceId: string,
+        attributeId: string = SystemIds.RELATION_INDEX,
+        attributeName: string = 'Index'
+      ) => {
+        console.log('Debounced reorderItems called with', items.length, 'items');
+        reorderItems(items, itemSpaceId, attributeId, attributeName);
+      },
+      100 // 100ms debounce time
+    ),
+    []
+  );
+
+  // Use the shared utility for reordering items (debounced)
   const reorderCollectionItems = React.useCallback((reorderedItems: Array<{ relationId: string; index?: string; [key: string]: any }>) => {
     if (!reorderedItems.length) return;
 
-    console.log('Reordering collection items using shared utility');
-    // Delegate to our shared utility function
-    reorderItems(reorderedItems, spaceId, SystemIds.RELATION_INDEX, 'Index');
-  }, [spaceId]);
+    console.log('Reordering collection items using shared utility (debounced)', reorderedItems);
+    // Use the debounced version of our shared utility function
+    debouncedReorderItems(reorderedItems, spaceId, SystemIds.RELATION_INDEX, 'Index');
+  }, [debouncedReorderItems, spaceId]);
 
   // We no longer have a loading state since sort is synchronous
   const isLoadingCollectionIndices = false;

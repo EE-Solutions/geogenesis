@@ -279,10 +279,33 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
 
   // Handle reordering with the reorderRelations utility
   const handleReorder = React.useCallback((reorderedItems: RelationRenderableProperty[]) => {
-    setRelationItems(reorderedItems);
-    // Call reorderRelations to update indices in the database
-    reorderRelations(reorderedItems, spaceId);
-  }, [spaceId]);
+    if (!reorderedItems.length) return;
+
+    // Ensure all items have a relationId (required by reorderRelations)
+    const itemsWithRelationId = reorderedItems.map(item => {
+      if (!item.relationId && item.value) {
+        // Use value instead of id since RelationRenderableProperty doesn't have id
+        return { ...item, relationId: item.value };
+      }
+      return item;
+    });
+
+    // Check if the order actually changed by comparing relationIds
+    const currentIds = relationItems.map(item => item.relationId || item.value || '');
+    const newIds = itemsWithRelationId.map(item => item.relationId || item.value || '');
+
+    // If the order is exactly the same, don't do anything
+    if (currentIds.length === newIds.length &&
+        currentIds.every((id, index) => id === newIds[index])) {
+      return;
+    }
+
+    // Update UI state immediately for smooth animation
+    setRelationItems(itemsWithRelationId);
+
+    // Direct call to reorderRelations with properly formed items
+    reorderRelations(itemsWithRelationId, spaceId);
+  }, [relationItems, spaceId]);
 
   // Update state when relations prop changes
   React.useEffect(() => {
@@ -299,6 +322,9 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
         axis="x"
         values={relationItems}
         onReorder={handleReorder}
+        layoutScroll
+        layout="preserve-aspect"
+        style={{ willChange: "transform" }}
         className="flex flex-wrap gap-2 items-center"
       >
         {relationItems.map((r) => {
@@ -463,15 +489,19 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
               key={relationId}
               value={r}
               as="span"
+              dragListener={true}
+              dragControls={undefined}
+              layoutId={relationId}
+              layout
               initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ 
-                opacity: 1, 
+              animate={{
+                opacity: 1,
                 scale: 1,
-                transition: { 
+                transition: {
                   type: 'spring',
-                  stiffness: 300, 
-                  damping: 20 
-                } 
+                  stiffness: 300,
+                  damping: 30
+                }
               }}
               exit={{ opacity: 0, scale: 0.8 }}
               style={{ touchAction: 'none' }}
