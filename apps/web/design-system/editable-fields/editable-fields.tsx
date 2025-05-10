@@ -6,7 +6,6 @@ import * as React from 'react';
 import { ChangeEvent, useRef } from 'react';
 
 import { useOptimisticValueWithSideEffect } from '~/core/hooks/use-debounced-value';
-import { useEffectOnce } from '~/core/hooks/use-effect-once';
 import { Services } from '~/core/services';
 import { getImagePath } from '~/core/utils/utils';
 
@@ -17,16 +16,14 @@ import { Trash } from '../icons/trash';
 import { Upload } from '../icons/upload';
 
 const textareaStyles = cva(
-  // The react-textarea-autosize library miscalculates the height by 1 pixel. We add a negative margin
-  // of -1px to compensate for this. This results in the correct line heights between both edit and
-  // browse modes. This only affects the editable title of entity pages.
-  'm-0 -mb-[1px] w-full resize-none bg-transparent p-0 text-body placeholder:text-grey-03 focus:outline-none',
+  // The react-textarea-autosize library miscalculates the height. We add a negative margin to compensate for this. This results in the correct line heights between both edit and browse modes. This only affects the editable titles of entity pages and editable titles of data blocks
+  'm-0 w-full resize-none bg-transparent p-0 placeholder:text-grey-03 focus:outline-none',
   {
     variants: {
       variant: {
-        mainPage: 'text-mainPage',
-        body: 'text-body',
-        tableCell: '-mb-0 text-tableCell',
+        mainPage: 'mb-[-1px] text-mainPage',
+        body: 'mb-[-6.5px] text-body',
+        tableCell: 'mb-[-3.5px] text-tableCell',
         smallTitle: 'text-smallTitle',
       },
     },
@@ -62,7 +59,7 @@ export function TableStringField({ ...props }: TableStringFieldProps) {
 type PageStringFieldProps = {
   onChange: (value: string) => void;
   placeholder?: string;
-  variant?: 'mainPage' | 'body' | 'smallTitle';
+  variant?: 'mainPage' | 'body' | 'smallTitle' | 'tableCell';
   value?: string;
 };
 
@@ -76,34 +73,6 @@ export function PageStringField({ ...props }: PageStringFieldProps) {
   return (
     <Textarea
       {...props}
-      value={localValue}
-      onChange={e => setLocalValue(e.currentTarget.value)}
-      className={textareaStyles({ variant: props.variant })}
-    />
-  );
-}
-
-export function FocusedStringField({ ...props }: PageStringFieldProps) {
-  const { value: localValue, onChange: setLocalValue } = useOptimisticValueWithSideEffect({
-    callback: props.onChange,
-    delay: 1000,
-    initialValue: props.value || '',
-  });
-
-  const ref = useRef<HTMLTextAreaElement>(null!);
-
-  useEffectOnce(() => {
-    setTimeout(() => {
-      ref.current.focus();
-      const length = ref.current.value.length;
-      ref.current.setSelectionRange(length, length);
-    }, 200);
-  });
-
-  return (
-    <Textarea
-      {...props}
-      ref={ref}
       value={localValue}
       onChange={e => setLocalValue(e.currentTarget.value)}
       className={textareaStyles({ variant: props.variant })}

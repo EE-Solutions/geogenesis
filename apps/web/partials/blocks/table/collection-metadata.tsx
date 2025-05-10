@@ -1,33 +1,29 @@
-import { SystemIds } from '@graphprotocol/grc-20';
 import * as Popover from '@radix-ui/react-popover';
 import cx from 'classnames';
 import Image from 'next/image';
 
-import { useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useState } from 'react';
 
 import { useDataBlock } from '~/core/blocks/data/use-data-block';
 import type { DataBlockView } from '~/core/blocks/data/use-view';
 import { removeRelation, useWriteOps } from '~/core/database/write';
-import { useOptimisticValueWithSideEffect } from '~/core/hooks/use-debounced-value';
-import { useOnClickOutside } from '~/core/hooks/use-on-click-outside';
 import { useSpace } from '~/core/hooks/use-space';
 import { EntityId } from '~/core/io/schema';
 import { useQueryEntity } from '~/core/sync/use-store';
 import { getImagePath } from '~/core/utils/utils';
 
-import { FocusedStringField } from '~/design-system/editable-fields/editable-fields';
 import { CheckCircle } from '~/design-system/icons/check-circle';
 import { CheckCloseSmall } from '~/design-system/icons/check-close-small';
 import { Menu } from '~/design-system/icons/menu';
 import { RelationSmall } from '~/design-system/icons/relation-small';
 import { TopRanked } from '~/design-system/icons/top-ranked';
-import { PrefetchLink as Link } from '~/design-system/prefetch-link';
 import { PrefetchLink } from '~/design-system/prefetch-link';
 import { SelectSpaceAsPopover } from '~/design-system/select-space-dialog';
 
-import type { onChangeEntryFn, onLinkEntryFn } from '~/partials/blocks/table/change-entry';
+import type { onLinkEntryFn } from '~/partials/blocks/table/change-entry';
 
-type EditableTitleProps = {
+type CollectionMetadataProps = {
   view: DataBlockView;
   isEditing: boolean;
   name: string | null;
@@ -38,57 +34,23 @@ type EditableTitleProps = {
   collectionId?: string;
   relationId?: string;
   verified?: boolean;
-  onChangeEntry: onChangeEntryFn;
   onLinkEntry: onLinkEntryFn;
+  children: ReactNode;
 };
 
-export const EditableTitle = ({
+export const CollectionMetadata = ({
   view,
   isEditing,
   name,
-  href,
   currentSpaceId,
   entityId,
   spaceId,
   collectionId,
   relationId,
   verified,
-  onChangeEntry,
   onLinkEntry,
-}: EditableTitleProps) => {
-  const { value: newName, onChange: setNewName } = useOptimisticValueWithSideEffect({
-    callback: value => {
-      onChangeEntry(
-        {
-          entityId,
-          entityName: value,
-          spaceId: currentSpaceId,
-        },
-        {
-          type: 'EVENT',
-          data: {
-            type: 'UPSERT_RENDERABLE_TRIPLE_VALUE',
-            payload: {
-              renderable: {
-                attributeId: SystemIds.NAME_ATTRIBUTE,
-                entityId,
-                spaceId: currentSpaceId,
-                attributeName: 'Name',
-                entityName: name,
-                type: 'TEXT',
-                value: name ?? '',
-              },
-              value: { type: 'TEXT', value },
-            },
-          },
-        }
-      );
-    },
-    delay: 1000,
-    initialValue: name ?? '',
-  });
-
-  const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
+  children,
+}: CollectionMetadataProps) => {
   const [isHovered, setIsHovered] = useState<boolean>(false);
   const [isPopoverOpen, setIsPopoverOpen] = useState<boolean>(false);
 
@@ -138,40 +100,28 @@ export const EditableTitle = ({
       }}
     >
       <div className="absolute -inset-2 z-0" />
-      <div className="relative z-10 flex w-full items-center gap-2">
-        {!isEditingTitle ? (
-          <>
-            {!isEditing ? (
-              <Link
-                href={href}
-                className={cx(
-                  'truncate',
-                  view === 'TABLE' && 'text-tableCell text-ctaHover hover:underline',
-                  view === 'LIST' && 'text-smallTitle font-medium text-text',
-                  view === 'GALLERY' && 'text-smallTitle font-medium text-text'
-                )}
-              >
-                {newName}
-              </Link>
-            ) : (
-              <button
-                onClick={() => setIsEditingTitle(true)}
-                className={cx(
-                  'cursor-text truncate',
-                  view === 'TABLE' && 'text-tableCell text-text',
-                  view === 'LIST' && 'text-body text-text',
-                  view === 'GALLERY' && 'text-body text-text'
-                )}
-              >
-                {newName}
-              </button>
+      <div className="relative z-10">
+        <div className="relative z-20 w-full">{children}</div>
+        <div className="pointer-events-none absolute inset-0 z-30">
+          <span
+            className={cx(
+              'inline',
+              'opacity-0',
+              view === 'GALLERY' ? (isEditing ? 'text-body' : 'text-smallTitle font-medium') : null,
+              view === 'LIST' ? (isEditing ? 'text-body' : 'text-smallTitle font-medium') : null,
+              view === 'TABLE' ? (isEditing ? 'text-tableCell' : 'text-tableCell text-ctaHover') : null,
+              view === 'BULLETED_LIST' ? (isEditing ? 'text-body' : 'text-body') : null
             )}
-            {verified && (
-              <span>
-                <CheckCircle color={isEditing || view !== 'TABLE' ? 'text' : 'ctaHover'} />
-              </span>
-            )}
-            {relationId && isHovered && (
+          >
+            {name}
+          </span>
+          {verified && (
+            <span className="inline-block pl-2 pt-0.5">
+              <CheckCircle color={isEditing || view !== 'TABLE' ? 'text' : 'ctaHover'} />
+            </span>
+          )}
+          {relationId && isHovered && (
+            <div className="pointer-events-auto inline-block pl-2">
               <Popover.Root open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
                 <Popover.Trigger asChild>
                   <button
@@ -226,94 +176,10 @@ export const EditableTitle = ({
                   </Popover.Content>
                 </Popover.Portal>
               </Popover.Root>
-            )}
-          </>
-        ) : (
-          <EditingTitle
-            view={view}
-            name={name ?? ''}
-            newName={newName}
-            setNewName={setNewName}
-            entityId={entityId}
-            currentSpaceId={currentSpaceId}
-            onChangeEntry={onChangeEntry}
-            onDone={() => setIsEditingTitle(false)}
-          />
-        )}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
-};
-
-type EditingTitleProps = {
-  view: DataBlockView;
-  name: string;
-  newName: string;
-  setNewName: (value: string) => void;
-  currentSpaceId: string;
-  entityId: string;
-  onChangeEntry: onChangeEntryFn;
-  onDone: () => void;
-};
-
-const EditingTitle = ({
-  view,
-  name,
-  newName,
-  setNewName,
-  currentSpaceId,
-  entityId,
-  onChangeEntry,
-  onDone,
-}: EditingTitleProps) => {
-  const ref = useRef(null);
-
-  useOnClickOutside(() => {
-    onChangeEntry(
-      {
-        entityId,
-        entityName: name,
-        spaceId: currentSpaceId,
-      },
-      {
-        type: 'EVENT',
-        data: {
-          type: 'UPSERT_RENDERABLE_TRIPLE_VALUE',
-          payload: {
-            renderable: {
-              attributeId: SystemIds.NAME_ATTRIBUTE,
-              entityId,
-              spaceId: currentSpaceId,
-              attributeName: 'Name',
-              entityName: name,
-              type: 'TEXT',
-              value: name ?? '',
-            },
-            value: { type: 'TEXT', value: newName },
-          },
-        },
-      }
-    );
-    onDone();
-  }, ref);
-
-  return (
-    <div
-      ref={ref}
-      className={cx(
-        'w-full',
-        view === 'TABLE' && '*:!text-tableCell *:!tracking-normal',
-        view === 'LIST' && '',
-        view === 'GALLERY' && ''
-      )}
-    >
-      <FocusedStringField
-        placeholder="Entity name..."
-        value={newName}
-        onChange={string => {
-          setNewName(string);
-        }}
-      />
     </div>
   );
 };

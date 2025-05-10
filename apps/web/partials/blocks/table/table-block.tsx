@@ -41,6 +41,7 @@ import { Text } from '~/design-system/text';
 
 import { onChangeEntryFn } from './change-entry';
 import { DataBlockViewMenu } from './data-block-view-menu';
+import { TableBlockBulletedListItem } from './table-block-bulleted-list-item';
 import { TableBlockContextMenu } from './table-block-context-menu';
 import { TableBlockEditableFilters } from './table-block-editable-filters';
 import { TableBlockEditableTitle } from './table-block-editable-title';
@@ -403,8 +404,32 @@ export const TableBlock = ({ spaceId }: Props) => {
         {entries.map((row, index: number) => {          
           return (
             <TableBlockListItem
-              key={`${row.entityId}-${index}`}
               isEditing={isEditing}
+              key={`${row.entityId}-${index}`}
+              columns={row.columns}
+              currentSpaceId={spaceId}
+              rowEntityId={row.entityId}
+              isPlaceholder={Boolean(row.placeholder)}
+              onChangeEntry={onChangeEntry}
+              onLinkEntry={onLinkEntry}
+              properties={propertiesSchema}
+              relationId={row.columns[SystemIds.NAME_ATTRIBUTE]?.relationId}
+              source={source}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (view === 'BULLETED_LIST') {
+    EntriesComponent = (
+      <div className="flex w-full flex-col">
+        {entries.map((row, index: number) => {
+          return (
+            <TableBlockBulletedListItem
+              isEditing={isEditing}
+              key={`${row.entityId}-${index}`}
               columns={row.columns}
               currentSpaceId={spaceId}
               rowEntityId={row.entityId}
@@ -422,8 +447,8 @@ export const TableBlock = ({ spaceId }: Props) => {
   }
 
   if (view === 'GALLERY') {
-    EntriesComponent = isEditing && source.type === 'COLLECTION' ? (
-      <div className="grid grid-cols-3 gap-x-4 gap-y-10">
+    EntriesComponent = (
+      <div className="grid grid-cols-3 gap-x-4 gap-y-10 sm:grid-cols-2">
         <Reorder.Group 
           values={entries} 
           onReorder={(reorderedItems) => {
@@ -443,57 +468,38 @@ export const TableBlock = ({ spaceId }: Props) => {
           }}
           className="contents" // This makes the Reorder.Group not affect the grid layout
         >
-          {entries.map((row) => {          
+          {entries.map((row, index: number) => {
             return (
-              <Reorder.Item
-                key={row.entityId}
-                value={row}
-                as="div"
-                drag
-                dragListener={isEditing}
-                style={{ touchAction: "none" }}
-                className="relative group pl-6"
-              >
-                <div className="absolute left-0 top-1/2 transform -translate-y-1/2 z-10 bg-white/90 rounded-full p-1 shadow-sm cursor-move opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                  <DragHandle />
-                </div>
-                <TableBlockGalleryItem
-                  rowEntityId={row.entityId}
-                  isEditing={isEditing}
-                  columns={row.columns}
-                  currentSpaceId={spaceId}
-                  onChangeEntry={onChangeEntry}
-                  onLinkEntry={onLinkEntry}
-                  isPlaceholder={Boolean(row.placeholder)}
-                  properties={propertiesSchema}
-                  relationId={row.columns[SystemIds.NAME_ATTRIBUTE]?.relationId}
-                  source={source}
-                />
-              </Reorder.Item>
+              <div key={`${row.entityId}-${index}`} className="w-full">
+                <Reorder.Item
+                  key={row.entityId}
+                  value={row}
+                  as="div"
+                  drag
+                  dragListener={isEditing}
+                  style={{ touchAction: "none" }}
+                  className="relative group pl-6"
+                >
+                  <div className="absolute left-0 top-1/2 transform -translate-y-1/2 z-10 bg-white/90 rounded-full p-1 shadow-sm cursor-move opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                    <DragHandle />
+                  </div>
+                  <TableBlockGalleryItem
+                    rowEntityId={row.entityId}
+                    isEditing={isEditing}
+                    columns={row.columns}
+                    currentSpaceId={spaceId}
+                    onChangeEntry={onChangeEntry}
+                    onLinkEntry={onLinkEntry}
+                    isPlaceholder={Boolean(row.placeholder)}
+                    properties={propertiesSchema}
+                    relationId={row.columns[SystemIds.NAME_ATTRIBUTE]?.relationId}
+                    source={source}
+                  />
+                </Reorder.Item>
+              </div>
             );
           })}
         </Reorder.Group>
-      </div>
-    ) : (
-      <div className="grid grid-cols-3 gap-x-4 gap-y-10">
-        {entries.map((row, index: number) => {
-          return (
-            <div key={`${row.entityId}-${index}`} className="w-full">
-              <TableBlockGalleryItem
-                rowEntityId={row.entityId}
-                isEditing={isEditing}
-                columns={row.columns}
-                currentSpaceId={spaceId}
-                onChangeEntry={onChangeEntry}
-                onLinkEntry={onLinkEntry}
-                isPlaceholder={Boolean(row.placeholder)}
-                properties={propertiesSchema}
-                relationId={row.columns[SystemIds.NAME_ATTRIBUTE]?.relationId}
-                source={source}
-              />
-            </div>
-          );
-        })}
       </div>
     );
   }
