@@ -32,10 +32,12 @@ export function useRelationshipIndices<T extends RelationEntity>(
   options: UseRelationshipIndicesOptions
 ): UseRelationshipIndicesReturn<T> {
   const { spaceId } = options;
-  
-  const [relationItems, setRelationItems] = useState<T[]>(items);
+
+  // Start with empty array instead of potentially unsorted items
+  const [relationItems, setRelationItems] = useState<T[]>([]);
   const [relationIndices, setRelationIndices] = useState<Record<string, string>>({});
-  
+  const [initialRenderComplete, setInitialRenderComplete] = useState(false);
+
   const { entities: collectionItems, isLoading } = useQueryEntities({
     enabled: items.length > 0,
     where: {
@@ -70,18 +72,26 @@ export function useRelationshipIndices<T extends RelationEntity>(
   const sortedItems = useMemo(() => {
     // Only recalculate when items or indices change
     const currentItems = itemsRef.current;
-    
-    if (!currentItems.length || Object.keys(indicesMap).length === 0) {
+
+    if (!currentItems.length) {
       return currentItems;
     }
 
-    // Create a new sorted array with index values attached
+    // Always sort items, even if we don't have indices yet
+    // This ensures consistent ordering even before indices are loaded
     const result = [...currentItems].sort((a, b) => {
-      const indexA = indicesMap[a.relationId] || '';
-      const indexB = indicesMap[b.relationId] || '';
-      return indexA.localeCompare(indexB, undefined, { numeric: true });
+      // If we have indices, use them
+      if (Object.keys(indicesMap).length > 0) {
+        const indexA = indicesMap[a.relationId] || '';
+        const indexB = indicesMap[b.relationId] || '';
+        return indexA.localeCompare(indexB, undefined, { numeric: true });
+      }
+
+      // If no indices yet, sort by relationId to maintain consistent order
+      // This prevents the flicker by having a deterministic initial order
+      return a.relationId.localeCompare(b.relationId);
     });
-    
+
     // Add index values to sorted items
     result.forEach(item => {
       const indexValue = indicesMap[item.relationId];
@@ -89,7 +99,7 @@ export function useRelationshipIndices<T extends RelationEntity>(
         item.index = indexValue;
       }
     });
-    
+
     return result;
   }, [indicesMap]); // Remove items from dependency array to prevent infinite loops
 
@@ -98,17 +108,23 @@ export function useRelationshipIndices<T extends RelationEntity>(
     // Only update if we have data and it's different from current state
     if (sortedItems.length > 0) {
       setRelationItems(sortedItems);
-      
+
       // Also update the indices record for reorderItems to use
       setRelationIndices(indicesMap);
+
+      // Mark initial render as complete once we have indices and sorted items
+      if (!initialRenderComplete && Object.keys(indicesMap).length > 0) {
+        setInitialRenderComplete(true);
+      }
     }
-  }, [sortedItems, indicesMap]);
+  }, [sortedItems, indicesMap, initialRenderComplete]);
 
 
   /**
    * Reorder relation items and update their indices
    */
   const reorderItems = (reorderedItems: T[]) => {
+    console.log('Reordering items:', reorderedItems);
     setRelationItems(reorderedItems);
 
     
@@ -224,11 +240,20 @@ export function useRelationshipIndices<T extends RelationEntity>(
     }
   };
 
+  // Check if all items are placeholders
+  const hasOnlyPlaceholders = items.length > 0 && items.every(item => item.placeholder === true);
+
+  // We now need to determine if the component is ready to render relations
+  const indicesLoaded = Object.keys(indicesMap).length > 0 || !items.length || hasOnlyPlaceholders;
+
   // Use the calculated sorted items directly instead of the state
-  // to avoid rendering loops
+  // Only return items when we have loaded indices to ensure correct order
+  // If there are no items to begin with, don't delay rendering
   return {
-    sortedItems: sortedItems.length > 0 ? sortedItems : relationItems,
+    sortedItems: hasOnlyPlaceholders || !items.length ? items : (initialRenderComplete ? relationItems : []),
     reorderItems,
-    isLoading: isLoading || !collectionItems
+    // Keep isLoading true until we have indices, preventing premature renders
+    // But if there are only placeholders or no items, don't show loading state
+    isLoading: items.length > 0 && !hasOnlyPlaceholders ? (isLoading || !indicesLoaded) : false
   };
 }

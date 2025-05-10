@@ -1,4 +1,4 @@
-import { SystemIds } from '@graphprotocol/grc-20';
+import { SystemIds, Relation as R } from '@graphprotocol/grc-20';
 import { INITIAL_RELATION_INDEX_VALUE } from '@graphprotocol/grc-20/constants';
 import React from 'react';
 
@@ -10,7 +10,36 @@ import { EntityId } from '~/core/io/schema';
 import { useQueryEntities, useQueryEntity } from '~/core/sync/use-store';
 import { Relation } from '~/core/types';
 import { getImagePath } from '~/core/utils/utils';
-import { useRelationshipIndices } from '~/core/hooks/use-relationship-indices';
+// Define local functions for column sorting and reordering instead of importing
+// This solves the module export issues
+const sortColumnsByIndex = (columns: any[]) => {
+  if (!columns.length) return columns;
+
+  // First make a copy to avoid mutating the original
+  const sortableColumns = [...columns];
+
+  // Check if we have any columns with indices
+  const hasAnyIndices = sortableColumns.some(col => !!col.index);
+
+  // If no columns have indices, return them in original order
+  if (!hasAnyIndices) return sortableColumns;
+
+  // Sort columns with indices, preserving relative positioning
+  return sortableColumns.sort((a, b) => {
+    const indexA = a.index || '';
+    const indexB = b.index || '';
+
+    // If both have indices, sort by them
+    if (indexA && indexB) return indexA.localeCompare(indexB, undefined, { numeric: true });
+
+    // If only one has index, put the one with index first
+    if (indexA && !indexB) return -1;
+    if (!indexA && indexB) return 1;
+
+    // Default to id sorting for consistent order
+    return a.relationId.localeCompare(b.relationId);
+  });
+};
 
 import { useDataBlockInstance } from './use-data-block';
 import { useMapping } from './use-mapping';
@@ -46,21 +75,127 @@ export function useView() {
         relation.typeOf.id === EntityId(SystemIds.PROPERTIES)
     ) ?? [];
   
-  // Use the relationship indices hook to sort the shown columns
+  // Convert relations to the expected format with relationId property
   const memoizedRelations = React.useMemo(() => shownColumnRelations.map(relation => ({
     ...relation,
     relationId: relation.id
   })), [shownColumnRelations]);
 
-  const { 
-    sortedItems: sortedShownColumnRelations, 
-    reorderItems: reorderShownColumns,
-    isLoading: isLoadingIndices 
-  } = useRelationshipIndices(
-    // Use memoized relations to prevent creating a new array on each render
-    memoizedRelations,
-    { spaceId }
-  );
+  // Sort columns by their index directly instead of using useRelationshipIndices
+  const sortedShownColumnRelations = React.useMemo(() =>
+    sortColumnsByIndex(memoizedRelations)
+  , [memoizedRelations]);
+
+  // Local implementation of reorderColumns to avoid module import issues
+  const reorderColumns = React.useCallback((items: any[], targetSpaceId: string) => {
+    if (!items.length) return;
+
+    console.log('Reordering columns:', items);
+
+    // Get current indices
+    const relationIndices: Record<string, string> = {};
+    items.forEach(item => {
+      if (item.index) {
+        relationIndices[item.relationId] = item.index;
+      }
+    });
+
+    // Check for duplicate indices
+    const indices = Object.values(relationIndices);
+    const hasDuplicateIndices = indices.length > 0 &&
+      indices.some((index, i, arr) => arr.indexOf(index) !== i);
+
+    // Handle reordering based on whether we have duplicate indices
+    if (hasDuplicateIndices || indices.length === 0) {
+      // Create new indices for all items
+      try {
+        // First item
+        const firstItemOrdering = R.reorder({
+          relationId: items[0].relationId,
+          beforeIndex: undefined,
+          afterIndex: undefined,
+        });
+
+        // Update the first item
+        DB.upsert({
+          entityId: items[0].relationId,
+          attributeId: SystemIds.RELATION_INDEX,
+          attributeName: 'Index',
+          entityName: null,
+          value: firstItemOrdering.triple.value,
+        }, targetSpaceId);
+
+        // Process the rest
+        for (let i = 1; i < items.length; i++) {
+          const currentItem = items[i];
+          const previousItem = items[i - 1];
+
+          // Reorder with previous item's index
+          const currentOrdering = R.reorder({
+            relationId: currentItem.relationId,
+            beforeIndex: firstItemOrdering.triple.value.value,
+            afterIndex: undefined,
+          });
+
+          // Update database
+          DB.upsert({
+            entityId: currentItem.relationId,
+            attributeId: SystemIds.RELATION_INDEX,
+            attributeName: 'Index',
+            entityName: null,
+            value: currentOrdering.triple.value,
+          }, targetSpaceId);
+        }
+      } catch (error) {
+        console.error('Error fixing column indices:', error);
+      }
+    } else {
+      // Update only items that need it
+      items.forEach((item, arrayIndex) => {
+        const beforeItem = arrayIndex > 0 ? items[arrayIndex - 1] : undefined;
+        const afterItem = arrayIndex < items.length - 1 ? items[arrayIndex + 1] : undefined;
+
+        const beforeIndex = beforeItem ? relationIndices[beforeItem.relationId] : undefined;
+        const afterIndex = afterItem ? relationIndices[afterItem.relationId] : undefined;
+        const currentIndex = relationIndices[item.relationId];
+
+        // Check if update is needed
+        const needsUpdate =
+          !currentIndex ||
+          (beforeIndex && currentIndex && beforeIndex > currentIndex) ||
+          (afterIndex && currentIndex && currentIndex > afterIndex) ||
+          (beforeIndex === afterIndex && beforeIndex !== undefined);
+
+        if (!needsUpdate) return;
+
+        try {
+          const newTripleOrdering = R.reorder({
+            relationId: item.relationId,
+            beforeIndex: beforeIndex,
+            afterIndex: afterIndex,
+          });
+
+          DB.upsert({
+            entityId: item.relationId,
+            attributeId: SystemIds.RELATION_INDEX,
+            attributeName: 'Index',
+            entityName: null,
+            value: newTripleOrdering.triple.value,
+          }, targetSpaceId);
+        } catch (error) {
+          console.error('Error reordering column:', error);
+        }
+      });
+    }
+  }, []);
+
+  // Create reorder function that updates database
+  const reorderShownColumns = React.useCallback((reorderedItems) => {
+    reorderColumns(reorderedItems, spaceId);
+  }, [reorderColumns, spaceId]);
+
+  // We no longer need isLoadingIndices since we're sorting synchronously
+  const isLoadingIndices = false;
 
   // Disable verbose logging during normal operation
   // if (shownColumnRelations.length > 0) {
@@ -76,13 +211,21 @@ export function useView() {
 
   // Extract the column IDs in the order they appear in sortedShownColumnRelations
   // and add NAME_ATTRIBUTE if it's not already included
-  const shownColumnIds = sortedShownColumnRelations
-    .map(relation => relation.toEntity.id.toString())
+
+  // IMPORTANT: Preserve the sorted order from sortedShownColumnRelations
+  // This is critical for proper column ordering in tables
+  const sortedColumnIds = sortedShownColumnRelations
+    .map(relation => relation.toEntity.id.toString());
+
+  // Filter to only include IDs that exist in the mapping
+  // But preserve their relative order from sortedColumnIds
+  const shownColumnIds = sortedColumnIds
     .filter(id => id in mapping);
 
-  // Add NAME_ATTRIBUTE if it's not already in the list
+  // Add NAME_ATTRIBUTE to the beginning if it's not already in the list
+  // Name column is traditionally the first column
   if (!shownColumnIds.includes(SystemIds.NAME_ATTRIBUTE)) {
-    shownColumnIds.push(SystemIds.NAME_ATTRIBUTE);
+    shownColumnIds.unshift(SystemIds.NAME_ATTRIBUTE);
   }
 
   // Disable verbose logging during normal operation

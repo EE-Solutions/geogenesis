@@ -212,36 +212,37 @@ export const TableBlockTable = ({
   // Order properties based on shownColumnIds order
   const orderedProperties = React.useMemo(() => {
     if (!properties || properties.length === 0) return [];
-    
+
     // Create lookup map for properties
     const propMap = properties.reduce<Record<string, PropertySchema>>((acc, prop) => {
       acc[prop.id] = prop;
       return acc;
     }, {});
-    
-    // Start with NAME_ATTRIBUTE if it exists
-    const nameProperty = propMap[SystemIds.NAME_ATTRIBUTE];
-    const orderedProps = nameProperty ? [nameProperty] : [];
-    
-    // Add remaining properties in order of shownColumnIds
+
+    // Initialize ordered properties array
+    const orderedProps: PropertySchema[] = [];
+
+    // First, add properties in the exact order of shownColumnIds
     shownColumnIds.forEach(id => {
-      if (id !== SystemIds.NAME_ATTRIBUTE && propMap[id]) {
+      if (propMap[id]) {
         orderedProps.push(propMap[id]);
       }
     });
-    
+
+    // Special case: If NAME_ATTRIBUTE isn't in shownColumnIds but exists in properties,
+    // add it at the beginning
+    const nameProperty = propMap[SystemIds.NAME_ATTRIBUTE];
+    if (nameProperty && !shownColumnIds.includes(SystemIds.NAME_ATTRIBUTE)) {
+      orderedProps.unshift(nameProperty);
+    }
+
     // Add any remaining properties not in shownColumnIds
     properties.forEach(prop => {
-      if (!shownColumnIds.includes(prop.id) && prop.id !== SystemIds.NAME_ATTRIBUTE) {
+      if (!shownColumnIds.includes(prop.id) && !orderedProps.some(p => p.id === prop.id)) {
         orderedProps.push(prop);
       }
     });
-    
-    // Disable verbose logging during normal operation
-    // console.log('Original columns order:', properties.map(p => p.id));
-    // console.log('Ordered columns:', orderedProps.map(p => p.id));
-    // console.log('shownColumnIds:', shownColumnIds);
-    
+
     return orderedProps;
   }, [properties, shownColumnIds]);
 

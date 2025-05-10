@@ -13,7 +13,6 @@ import { useEditEvents } from '~/core/events/edit-events';
 import { useProperties } from '~/core/hooks/use-properties';
 import { useRelationship } from '~/core/hooks/use-relationship';
 import { useRenderables } from '~/core/hooks/use-renderables';
-import { useRelationshipIndices } from '~/core/hooks/use-relationship-indices';
 import { ID } from '~/core/id';
 import { EntityId } from '~/core/io/schema';
 import { useEntityPageStore } from '~/core/state/entity-page-store/entity-store';
@@ -47,6 +46,7 @@ import { DateFormatDropdown } from './date-format-dropdown';
 import { getRenderableTypeSelectorOptions } from './get-renderable-type-options';
 import { NumberOptionsDropdown } from './number-options-dropdown';
 import { RenderableTypeDropdown } from './renderable-type-dropdown';
+import { reorderRelations } from './reorder-relations';
 import { useQueryEntities } from '~/core/sync/use-store';
 
 interface Props {
@@ -273,24 +273,35 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
   const property = properties?.[typeOfId];
   const relationValueTypes = property?.relationValueTypes;
   const filterByTypes = property?.relationValueTypes?.map(r => r.typeId);
-  
-  // Use the new hook to manage relationship indices
-  const { 
-    sortedItems: relationItems, 
-    reorderItems: handleReorder,
-    isLoading 
-  } = useRelationshipIndices(relations, { spaceId });
+
+  // State for managing reorderable items directly
+  const [relationItems, setRelationItems] = React.useState<RelationRenderableProperty[]>([]);
+
+  // Handle reordering with the reorderRelations utility
+  const handleReorder = React.useCallback((reorderedItems: RelationRenderableProperty[]) => {
+    setRelationItems(reorderedItems);
+    // Call reorderRelations to update indices in the database
+    reorderRelations(reorderedItems, spaceId);
+  }, [spaceId]);
+
+  // Update state when relations prop changes
+  React.useEffect(() => {
+    setRelationItems(relations);
+  }, [relations]);
+
+  // Check if we only have a placeholder item
+  const hasOnlyPlaceholder = relations.length === 1 && relations[0].placeholder === true;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Reorder.Group 
-        as="span" 
-        axis="x" 
-        values={relationItems} 
+      <Reorder.Group
+        as="span"
+        axis="x"
+        values={relationItems}
         onReorder={handleReorder}
         className="flex flex-wrap gap-2 items-center"
       >
-        {!isLoading && relationItems.map((r) => {
+        {relationItems.map((r) => {
           const relationId = r.relationId;
           const relationName = r.valueName;
           const renderableType = r.type;
@@ -484,7 +495,6 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
           );
         })}
       </Reorder.Group>
-      
       {!hasPlaceholders && typeOfRenderableType === 'RELATION' && (
         <div className="mt-1">
           <SelectEntityAsPopover

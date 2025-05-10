@@ -20,7 +20,6 @@ import { useQueryEntitiesAsync, useQueryEntityAsync } from '~/core/sync/use-stor
 import { RenderableProperty } from '~/core/types';
 import { toRenderables } from '~/core/utils/to-renderables';
 import { getImagePath } from '~/core/utils/utils';
-import { useRelationshipIndices } from '~/core/hooks/use-relationship-indices';
 
 import { Checkbox } from '~/design-system/checkbox';
 import { Dots } from '~/design-system/dots';
@@ -153,11 +152,13 @@ function RelationsPropertySelector() {
 function DefaultPropertySelector() {
   const { filterState } = useFilters();
   const { source } = useSource();
-  const { 
-    spaceId, 
-    shownColumnIds, 
-    shownColumnRelations, 
-    reorderShownColumns 
+  const {
+    spaceId,
+    shownColumnIds,
+    // shownColumnRelations already comes sorted by index from useView
+    shownColumnRelations,
+    // reorderShownColumns uses the new reorderColumns utility from useView
+    reorderShownColumns
   } = useView();
 
   const setIsEditingProperties = useSetAtom(editingPropertiesAtom);
@@ -173,19 +174,32 @@ function DefaultPropertySelector() {
     },
   });
 
+  // Collect the relations that are already shown in the table
+  const visibleRelations = React.useMemo(() => {
+    // Create a map of entity IDs to their relations for quick lookup
+    const entityIdToRelationMap = new Map();
+
+    // Build the map from shownColumnRelations which is already sorted by index
+    shownColumnRelations.forEach(relation => {
+      if (relation.toEntity && relation.toEntity.id) {
+        entityIdToRelationMap.set(relation.toEntity.id.toString(), relation);
+      }
+    });
+
+    return entityIdToRelationMap;
+  }, [shownColumnRelations]);
+
   // Create a combined list of columns with display status
   const combinedColumns = React.useMemo(() => {
     if (!availableColumns) return [];
-    
+
     // Filter out the name column (index 0) from available columns
     const filteredColumns = availableColumns
       .filter((column, index) => index !== 0)
       .map(column => {
-        // Find if this column has a relation in shownColumnRelations
-        const relationForColumn = shownColumnRelations.find(
-          relation => relation.toEntity.id === column.id
-        );
-        
+        // Get the relation for this column from our map (if it exists)
+        const relationForColumn = visibleRelations.get(column.id);
+
         return {
           ...column,
           // If the column has a relation, use that relation's ID as the dragKey
@@ -197,45 +211,59 @@ function DefaultPropertySelector() {
           isShown: shownColumnIds.includes(column.id)
         };
       });
-    
+
     return filteredColumns;
-  }, [availableColumns, shownColumnIds, shownColumnRelations]);
+  }, [availableColumns, shownColumnIds, visibleRelations]);
 
-  // Create state to track the ordered columns only once on initial render
-  // or when combinedColumns changes significantly (not on every render)
-  const [orderedColumns, setOrderedColumns] = React.useState([]);
+  // Create a precisely ordered list of columns that exactly matches the database order
+  const orderedColumns = React.useMemo(() => {
+    if (combinedColumns.length === 0) return [];
 
-  // Update local state only when source data changes meaningfully
-  // Use JSON.stringify to compare deep changes rather than reference changes
-  const combinedColumnsString = JSON.stringify(
-    combinedColumns.map(col => ({ id: col.id, isShown: col.isShown, relId: col.relation?.id }))
-  );
-  
-  React.useEffect(() => {
-    if (combinedColumns.length > 0) {
-      setOrderedColumns(combinedColumns);
-    }
-  }, [combinedColumnsString]);
+    // Step 1: Start with columns that have relations (in the exact order they appear in shownColumnRelations)
+    const shownColumnsMap = new Map();
+    const resultColumns = [];
+
+    // First pass: collect all columns with relations into a map for easy lookup
+    combinedColumns.forEach(column => {
+      if (column.relation) {
+        shownColumnsMap.set(column.relation.id, column);
+      }
+    });
+
+    // Second pass: add shown columns in the exact order they appear in shownColumnRelations
+    shownColumnRelations.forEach(relation => {
+      const column = shownColumnsMap.get(relation.id);
+      if (column) {
+        resultColumns.push(column);
+        // Remove from map to mark as processed
+        shownColumnsMap.delete(relation.id);
+      }
+    });
+
+    // Step 2: Add remaining columns that don't have relations
+    const remainingColumns = combinedColumns.filter(column => !column.relation);
+    resultColumns.push(...remainingColumns);
+
+    return resultColumns;
+  }, [combinedColumns, shownColumnRelations]);
 
   // Custom reorder function for UI and to update relations
   const handleReorder = React.useCallback((newOrder) => {
-    // First update UI immediately
-    setOrderedColumns(newOrder);
-    
-    // Debounce the database update to avoid excessive calls during drag
-    // We use requestAnimationFrame to batch updates with the browser's render cycle
-    requestAnimationFrame(() => {
-      // Only reorder relations that actually exist in the database
-      // (those with a relation property)
-      const relationsToReorder = newOrder
-        .filter(item => item.relation)
-        .map(item => item.relation);
-        
-      // Only update if we actually have relations to reorder
-      if (relationsToReorder.length > 0) {
-        reorderShownColumns(relationsToReorder);
-      }
-    });
+    // Extract relations that actually exist in the database in their new order
+    const relationsToReorder = newOrder
+      .filter(item => item.relation)
+      .map(item => item.relation);
+
+    // Only update if we actually have relations to reorder
+    if (relationsToReorder.length > 0) {
+      console.log('Reordering relations in properties panel:',
+        relationsToReorder.map(r => ({ id: r.id, toEntityId: r.toEntity?.id }))
+      );
+
+      // The reorderShownColumns function will handle updating the indices
+      // This will persist the new order to the database
+      reorderShownColumns(relationsToReorder);
+    }
   }, [reorderShownColumns]);
 
   const isLoading = isLoadingColumns;
