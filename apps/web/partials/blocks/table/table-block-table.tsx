@@ -208,10 +208,47 @@ export const TableBlockTable = ({
   const isEditing = useUserIsEditing(space);
   const isEditingColumns = useAtomValue(editingPropertiesAtom);
   const [expandedCells] = useState<Record<string, boolean>>({});
+  
+  // Order properties based on shownColumnIds order
+  const orderedProperties = React.useMemo(() => {
+    if (!properties || properties.length === 0) return [];
+
+    // Create lookup map for properties
+    const propMap = properties.reduce<Record<string, PropertySchema>>((acc, prop) => {
+      acc[prop.id] = prop;
+      return acc;
+    }, {});
+
+    // Initialize ordered properties array
+    const orderedProps: PropertySchema[] = [];
+
+    // First, add properties in the exact order of shownColumnIds
+    shownColumnIds.forEach(id => {
+      if (propMap[id]) {
+        orderedProps.push(propMap[id]);
+      }
+    });
+
+    // Special case: If NAME_ATTRIBUTE isn't in shownColumnIds but exists in properties,
+    // add it at the beginning
+    const nameProperty = propMap[SystemIds.NAME_ATTRIBUTE];
+    if (nameProperty && !shownColumnIds.includes(SystemIds.NAME_ATTRIBUTE)) {
+      orderedProps.unshift(nameProperty);
+    }
+
+    // Add any remaining properties not in shownColumnIds
+    properties.forEach(prop => {
+      if (!shownColumnIds.includes(prop.id) && !orderedProps.some(p => p.id === prop.id)) {
+        orderedProps.push(prop);
+      }
+    });
+
+    return orderedProps;
+  }, [properties, shownColumnIds]);
 
   const table = useReactTable({
     data: rows,
-    columns: formatColumns(properties, isEditing, [], SpaceId(space)),
+    columns: formatColumns(orderedProperties, isEditing, [], SpaceId(space)),
     defaultColumn,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -263,7 +300,7 @@ export const TableBlockTable = ({
         <table className="relative w-full border-collapse border-hidden bg-white" cellSpacing={0} cellPadding={0}>
           <thead>
             <tr>
-              {properties.map((column, i) => {
+              {orderedProperties.map((column, i) => {
                 const isShown = shownColumnIds.includes(column.id);
                 const headerClassNames = isShown
                   ? null
@@ -285,7 +322,7 @@ export const TableBlockTable = ({
                         key={column.id}
                         column={column}
                         isEditMode={isEditing}
-                        isLastColumn={i === properties.length - 1}
+                        isLastColumn={i === orderedProperties.length - 1}
                         spaceId={space}
                       />
                     </div>
