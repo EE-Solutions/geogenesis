@@ -81,10 +81,6 @@ export function EditableEntityPage({ id, spaceId, triples: serverTriples }: Prop
             const firstRenderable = renderables[0];
             const renderableType = firstRenderable.type;
 
-            if (renderableType === 'PLACE') {
-              console.log(renderables);
-            }
-
             // @TODO: We can abstract this away. We also don't need to pass in the first renderable to options func.
             const selectorOptions = getRenderableTypeSelectorOptions(
               firstRenderable,
@@ -428,12 +424,72 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
           );
         }
 
-        if (renderableType === 'PLACE') {
+        if (renderableType === 'PLACE' && r.placeholder === true) {
           return (
             <InputPlace
               key={`place-input-${relationId}`}
               relationValueTypes={relationValueTypes ? relationValueTypes : undefined}
               spaceId={spaceId}
+              onDone={result => {
+                const newRelationId = ID.createEntityId();
+
+                const newRelation: StoreRelation = {
+                  id: newRelationId,
+                  space: spaceId,
+                  index: INITIAL_RELATION_INDEX_VALUE,
+                  typeOf: {
+                    id: EntityId(r.attributeId),
+                    name: r.attributeName,
+                  },
+                  fromEntity: {
+                    id: EntityId(id),
+                    name: name,
+                  },
+                  toEntity: {
+                    id: EntityId(result.id),
+                    name: result.name,
+                    renderableType: 'PLACE',
+                    value: EntityId(result.id),
+                  },
+                };
+
+                DB.upsertRelation({
+                  relation: newRelation,
+                  spaceId,
+                });
+
+                if (result.space) {
+                  DB.upsert(
+                    {
+                      attributeId: SystemIds.RELATION_TO_ATTRIBUTE,
+                      attributeName: 'To Entity',
+                      entityId: newRelationId,
+                      entityName: null,
+                      value: {
+                        type: 'URL',
+                        value: GraphUrl.fromEntityId(result.id, { spaceId: result.space }),
+                      },
+                    },
+                    spaceId
+                  );
+
+                  if (result.verified) {
+                    DB.upsert(
+                      {
+                        attributeId: SystemIds.VERIFIED_SOURCE_ATTRIBUTE,
+                        attributeName: 'Verified Source',
+                        entityId: newRelationId,
+                        entityName: null,
+                        value: {
+                          type: 'CHECKBOX',
+                          value: '1',
+                        },
+                      },
+                      spaceId
+                    );
+                  }
+                }
+              }}
             />
           );
         }

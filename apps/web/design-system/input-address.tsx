@@ -1,3 +1,5 @@
+import { SystemIds } from '@graphprotocol/grc-20';
+import { INITIAL_RELATION_INDEX_VALUE } from '@graphprotocol/grc-20/constants';
 import * as Popover from '@radix-ui/react-popover';
 import { cva } from 'class-variance-authority';
 import cx from 'classnames';
@@ -7,8 +9,13 @@ import pluralize from 'pluralize';
 import * as React from 'react';
 import { startTransition, useState } from 'react';
 
+import { StoreRelation } from '~/core/database/types';
+import { DB } from '~/core/database/write';
 import { Feature } from '~/core/hooks/use-place-search';
 import { usePlaceSearch } from '~/core/hooks/use-place-search';
+import { useToast } from '~/core/hooks/use-toast';
+import { ID } from '~/core/id';
+import { EntityId } from '~/core/io/schema';
 import type { RelationValueType } from '~/core/types';
 import { getImagePath } from '~/core/utils/utils';
 
@@ -16,6 +23,7 @@ import { Tag } from '~/design-system/tag';
 import { Toggle } from '~/design-system/toggle';
 import { Tooltip } from '~/design-system/tooltip';
 
+import { EntityCreatedToast } from './autocomplete/entity-created-toast';
 import { ArrowLeft } from './icons/arrow-left';
 import { InfoSmall } from './icons/info-small';
 import { Search } from './icons/search';
@@ -33,6 +41,11 @@ type SearchPlaceEntityProps = {
   variant?: 'floating' | 'fixed';
   width?: 'clamped' | 'full';
   withSearchIcon?: boolean;
+  onCreateEntity?: (result: { id: EntityId; name: string | null; space?: EntityId; verified?: boolean }) => void;
+  onDone?: (
+    result: { id: EntityId; name: string | null; space?: EntityId; verified?: boolean },
+    fromCreateFn?: boolean
+  ) => void;
 };
 
 const inputStyles = cva('', {
@@ -82,9 +95,13 @@ export const InputPlace = ({
   containerClassName = '',
   inputClassName = '',
   withSearchIcon = false,
+  onDone,
+  spaceId,
 }: SearchPlaceEntityProps) => {
   const [isShowingIds, setIsShowingIds] = useAtom(showingIdsAtom);
   const [result, setResult] = useState<Feature[] | null>(null);
+
+  const [, setToast] = useToast();
 
   const filterByTypes = relationValueTypes.length > 0 ? relationValueTypes.map(r => r.typeId) : undefined;
 
@@ -102,7 +119,124 @@ export const InputPlace = ({
     setIsShowingIds(!isShowingIds);
   };
 
-  //TO DO: add create/import logic
+  //Create relation helper
+  const createRelation = (
+    toEntityId: string,
+    toEntityName: string,
+    fromEntityId: string,
+    fromEntityName: string,
+    attributeId: string,
+    attributeName: string
+  ) => {
+    const newRelationId = ID.createEntityId();
+
+    const newRelation: StoreRelation = {
+      id: newRelationId,
+      space: spaceId,
+      index: INITIAL_RELATION_INDEX_VALUE,
+      typeOf: {
+        id: EntityId(attributeId),
+        name: attributeName,
+      },
+      fromEntity: {
+        id: EntityId(fromEntityId),
+        name: fromEntityName,
+      },
+      toEntity: {
+        id: EntityId(toEntityId),
+        name: toEntityName,
+        renderableType: 'RELATION',
+        value: EntityId(toEntityId),
+      },
+    };
+
+    DB.upsertRelation({
+      relation: newRelation,
+      spaceId,
+    });
+  };
+
+  //Create/import logic
+  const createPlaceWithAddress = (result: Feature) => {
+    const addressEntityId = ID.createEntityId();
+    const placeEntityId = ID.createEntityId();
+
+    // Create Address entity
+    DB.upsert(
+      {
+        entityId: addressEntityId,
+        attributeId: SystemIds.NAME_ATTRIBUTE,
+        attributeName: 'Name',
+        entityName: result.place_name,
+        value: {
+          type: 'TEXT',
+          value: result.place_name,
+        },
+      },
+      spaceId
+    );
+
+    //If we have lat/long - update address entity with Location property
+    if (result.center?.length === 2) {
+      DB.upsert(
+        {
+          entityId: addressEntityId,
+          //Should be location property
+          attributeId: SystemIds.GEO_LOCATION_PROPERTY,
+          attributeName: 'Geo Location',
+          entityName: result.place_name,
+          value: {
+            type: 'TEXT', //Should be type "POINT" type
+            value: result.center.join(', '),
+          },
+        },
+        spaceId
+      );
+    }
+
+    //Add type to Address entity
+    createRelation(
+      SystemIds.ADDRESS_ATTRIBUTE,
+      'Address',
+      addressEntityId,
+      result.place_name,
+      SystemIds.TYPES_ATTRIBUTE,
+      'Types'
+    );
+
+    //Create place entity
+    DB.upsert(
+      {
+        entityId: placeEntityId,
+        attributeId: SystemIds.NAME_ATTRIBUTE,
+        attributeName: 'Name',
+        entityName: result.text,
+        value: {
+          type: 'TEXT',
+          value: result.text,
+        },
+      },
+      spaceId
+    );
+
+    //Add type place to place entity
+    //Hardcoded Place ID
+    const PLACE_ID = 'Fr887xssrH7RbK3S5gnLVb';
+    createRelation(PLACE_ID, 'Place', placeEntityId, result.text, SystemIds.TYPES_ATTRIBUTE, 'Types');
+
+    //Create relation in place entity with address entity
+    createRelation(
+      addressEntityId,
+      result.place_name,
+      placeEntityId,
+      result.text,
+      SystemIds.ADDRESS_ATTRIBUTE,
+      'Address'
+    );
+
+    //Create relation between place entity and current working entity
+    onDone?.({ id: placeEntityId, name: result.text }, true);
+  };
 
   return (
     <div
@@ -251,7 +385,7 @@ export const InputPlace = ({
                                   <button
                                     onClick={() => {
                                       setResult(null);
-                                      //   add create logic
+                                      createPlaceWithAddress(result);
                                       onQueryChange('');
                                     }}
                                     className="relative z-10 flex w-full flex-col rounded-md px-3 py-2 transition-colors duration-150 hover:bg-grey-01 focus:bg-grey-01 focus:outline-none"

@@ -24,7 +24,7 @@ export interface GeoBlock extends BlockEvent {
   network: string;
 }
 
-export type ValueType = 'TEXT' | 'NUMBER' | 'CHECKBOX' | 'URL' | 'TIME' | 'POINT' | 'PLACE';
+export type ValueType = 'TEXT' | 'NUMBER' | 'CHECKBOX' | 'URL' | 'TIME' | 'POINT';
 
 export type ValueOptions = {
   language?: string;

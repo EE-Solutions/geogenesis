@@ -12,10 +12,11 @@ export type ValueType =
   | 'CHECKBOX'
   | 'NUMBER'
   // | GEO_LOCATION
-  | 'PLACE';
+  | 'PLACE'
+  | 'POINT';
 
 export type Value = {
-  type: 'TEXT' | 'URL' | 'TIME' | 'CHECKBOX' | 'NUMBER' | 'PLACE';
+  type: 'TEXT' | 'URL' | 'TIME' | 'CHECKBOX' | 'NUMBER' | 'PLACE' | 'POINT';
   value: string;
   options?: TripleValueOptions;
 };
@@ -62,7 +63,7 @@ export type Triple = {
   isDeleted?: boolean;
 };
 
-export type RenderableEntityType = 'IMAGE' | 'RELATION' | 'DATA' | 'TEXT';
+export type RenderableEntityType = 'IMAGE' | 'RELATION' | 'DATA' | 'TEXT' | 'PLACE';
 
 // Renderable fields are a special data model to represent us rendering both
 // triples and relations in the same way. This is used across tables and entity
@@ -121,7 +122,16 @@ export type RenderableProperty =
 // The types of renderables don't map 1:1 to the triple value types. We might
 // also render relations with a specific type, e.g., an Image entity or a
 // Person entity, etc.
-export type SwitchableRenderableType = 'TEXT' | 'RELATION' | 'URL' | 'TIME' | 'IMAGE' | 'CHECKBOX' | 'NUMBER' | 'PLACE';
+export type SwitchableRenderableType =
+  | 'TEXT'
+  | 'RELATION'
+  | 'URL'
+  | 'TIME'
+  | 'IMAGE'
+  | 'CHECKBOX'
+  | 'NUMBER'
+  | 'PLACE'
+  | 'POINT';
 
 export type ReviewState =
   | 'idle'

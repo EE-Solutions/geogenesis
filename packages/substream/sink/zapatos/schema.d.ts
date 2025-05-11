@@ -63,7 +63,7 @@ declare module 'zapatos/schema' {
   export namespace every {
     export type subspace_proposal_type = ['ADD_SUBSPACE', 'REMOVE_SUBSPACE'];
   }
-  export type triple_value_type = 'CHECKBOX' | 'NUMBER' | 'POINT' | 'TEXT' | 'TIME' | 'URL' | 'PLACE';
+  export type triple_value_type = 'CHECKBOX' | 'NUMBER' | 'POINT' | 'TEXT' | 'TIME' | 'URL';
   export namespace every {
     export type triple_value_type = ['CHECKBOX', 'NUMBER', 'POINT', 'TEXT', 'TIME', 'URL'];
   }

@@ -25,6 +25,8 @@ export const RELATION = 'AKDxovGvZaPSWnmKnSoZJY';
 
 export const SPACE_TYPE = '7gzF671tq5JTZ13naG4tnr';
 
+export const PLACE = 'Fr887xssrH7RbK3S5gnLVb';
+
 /**
  * Defines the relation value types for a relation. e.g., a Persons
  * attribute must only contain relations where the to entity is type
