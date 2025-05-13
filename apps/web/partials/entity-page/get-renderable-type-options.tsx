@@ -7,6 +7,7 @@ import { RenderableProperty, SwitchableRenderableType, ValueTypeId } from '~/cor
 
 import { CheckboxChecked } from '~/design-system/icons/checkbox-checked';
 import { Date } from '~/design-system/icons/date';
+import { GeoLocation } from '~/design-system/icons/geo-location';
 import { Image } from '~/design-system/icons/image';
 import { Number } from '~/design-system/icons/number';
 import { Relation } from '~/design-system/icons/relation';
@@ -27,6 +28,8 @@ export function getRenderableTypeFromValueType(valueType: ValueTypeId) {
       return 'RELATION';
     case SystemIds.IMAGE:
       return 'IMAGE';
+    case SystemIds.POINT:
+      return 'POINT';
     default:
       return 'TEXT';
   }
@@ -222,8 +225,29 @@ export const getRenderableTypeSelectorOptions = (
       label: (
         <div className="flex items-center gap-2">
           <IconWrapper>
-            {/* Change icon to appropriate one */}
-            <Relation />
+            <GeoLocation />
+          </IconWrapper>
+          <p>Point</p>
+        </div>
+      ),
+      value: 'POINT' as const,
+      onClick: () =>
+        onSelect({
+          type: 'POINT',
+          entityId: renderable.entityId,
+          entityName: renderable.entityName,
+          attributeId: renderable.attributeId,
+          attributeName: renderable.attributeName,
+          value: '',
+          spaceId: renderable.spaceId,
+          placeholder: true,
+        }),
+    },
+    {
+      label: (
+        <div className="flex items-center gap-2">
+          <IconWrapper>
+            <GeoLocation />
           </IconWrapper>
           <p>Place</p>
         </div>
@@ -237,8 +261,6 @@ export const getRenderableTypeSelectorOptions = (
           attributeId: renderable.attributeId,
           attributeName: renderable.attributeName,
           value: '',
-          relationId: '',
-          valueName: null,
           spaceId: renderable.spaceId,
           placeholder: true,
         }),

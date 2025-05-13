@@ -13,7 +13,6 @@ import { StoreRelation } from '~/core/database/types';
 import { DB } from '~/core/database/write';
 import { Feature } from '~/core/hooks/use-place-search';
 import { usePlaceSearch } from '~/core/hooks/use-place-search';
-import { useToast } from '~/core/hooks/use-toast';
 import { ID } from '~/core/id';
 import { EntityId } from '~/core/io/schema';
 import type { RelationValueType } from '~/core/types';
@@ -23,7 +22,6 @@ import { Tag } from '~/design-system/tag';
 import { Toggle } from '~/design-system/toggle';
 import { Tooltip } from '~/design-system/tooltip';
 
-import { EntityCreatedToast } from './autocomplete/entity-created-toast';
 import { ArrowLeft } from './icons/arrow-left';
 import { InfoSmall } from './icons/info-small';
 import { Search } from './icons/search';
@@ -101,8 +99,6 @@ export const InputPlace = ({
   const [isShowingIds, setIsShowingIds] = useAtom(showingIdsAtom);
   const [result, setResult] = useState<Feature[] | null>(null);
 
-  const [, setToast] = useToast();
-
   const filterByTypes = relationValueTypes.length > 0 ? relationValueTypes.map(r => r.typeId) : undefined;
 
   const { results, onQueryChange, query, isEmpty, isLoading, resultEntities, isEntitiesLoading } = usePlaceSearch({
@@ -162,23 +158,18 @@ export const InputPlace = ({
     const placeEntityId = ID.createEntityId();
 
     // Create Address entity
-    DB.upsert(
-      {
-        entityId: addressEntityId,
-        attributeId: SystemIds.NAME_ATTRIBUTE,
-        attributeName: 'Name',
-        entityName: result.place_name,
-        value: {
-          type: 'TEXT',
-          value: result.place_name,
+    DB.upsertMany(
+      [
+        {
+          entityId: addressEntityId,
+          attributeId: SystemIds.NAME_ATTRIBUTE,
+          attributeName: 'Name',
+          entityName: result.place_name,
+          value: {
+            type: 'TEXT',
+            value: result.place_name,
+          },
         },
-      },
-      spaceId
-    );
-
-    //If we have lat/long - update address entity with Location property
-    if (result.center?.length === 2) {
-      DB.upsert(
         {
           entityId: addressEntityId,
           //Should be location property
@@ -186,13 +177,35 @@ export const InputPlace = ({
           attributeName: 'Geo Location',
           entityName: result.place_name,
           value: {
-            type: 'TEXT', //Should be type "POINT" type
-            value: result.center.join(', '),
+            type: 'POINT',
+            value: result.center.reverse().join(', ') ?? '',
           },
         },
-        spaceId
-      );
-    }
+        {
+          entityId: addressEntityId,
+          //Change to SystemIds (ZIP)
+          attributeId: 'MUyEdHoApYzU1ppq6MQVVD',
+          attributeName: 'Postcode/ZIP',
+          entityName: result.place_name,
+          value: {
+            type: 'TEXT',
+            value: result.zipcode ?? '',
+          },
+        },
+        {
+          entityId: addressEntityId,
+          //Change to SystemIds (State)
+          attributeId: '9ranP4P8RAc7PjnYojUkZm',
+          attributeName: 'State/province',
+          entityName: result.place_name,
+          value: {
+            type: 'TEXT',
+            value: result.province ?? '',
+          },
+        },
+      ],
+      spaceId
+    );
 
     //Add type to Address entity
     createRelation(

@@ -5,15 +5,7 @@ import { EntityId } from './io/schema';
 export type Dictionary<K extends string, T> = Partial<Record<K, T>>;
 export type OmitStrict<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
 
-export type ValueType =
-  | 'TEXT'
-  | 'URL'
-  | 'TIME'
-  | 'CHECKBOX'
-  | 'NUMBER'
-  // | GEO_LOCATION
-  | 'PLACE'
-  | 'POINT';
+export type ValueType = 'TEXT' | 'URL' | 'TIME' | 'CHECKBOX' | 'NUMBER' | 'PLACE' | 'POINT';
 
 export type Value = {
   type: 'TEXT' | 'URL' | 'TIME' | 'CHECKBOX' | 'NUMBER' | 'PLACE' | 'POINT';
@@ -63,7 +55,7 @@ export type Triple = {
   isDeleted?: boolean;
 };
 
-export type RenderableEntityType = 'IMAGE' | 'RELATION' | 'DATA' | 'TEXT' | 'PLACE';
+export type RenderableEntityType = 'IMAGE' | 'RELATION' | 'DATA' | 'TEXT' | 'POINT' | 'PLACE';
 
 // Renderable fields are a special data model to represent us rendering both
 // triples and relations in the same way. This is used across tables and entity
@@ -95,6 +87,10 @@ type RelationPropertyProperties = {
   placeholder?: boolean;
 };
 
+export type PointRelationRenderableProperty = {
+  type: 'POINT';
+} & NativeRenderableProperty;
+
 export type BaseRelationRenderableProperty = {
   type: 'RELATION';
 } & RelationPropertyProperties;
@@ -117,7 +113,8 @@ export type RenderableProperty =
   | TripleRenderableProperty
   | BaseRelationRenderableProperty
   | ImageRelationRenderableProperty
-  | PlaceRelationRenderableProperty;
+  | PlaceRelationRenderableProperty
+  | PointRelationRenderableProperty;
 
 // The types of renderables don't map 1:1 to the triple value types. We might
 // also render relations with a specific type, e.g., an Image entity or a
@@ -166,7 +163,8 @@ export type ValueTypeId =
   | typeof SystemIds.URL
   | typeof SystemIds.CHECKBOX
   | typeof SystemIds.NUMBER
-  | typeof SystemIds.IMAGE;
+  | typeof SystemIds.IMAGE
+  | typeof SystemIds.POINT;
 
 export type GeoType = {
   entityId: string;

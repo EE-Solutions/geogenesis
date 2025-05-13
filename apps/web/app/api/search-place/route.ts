@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+import { Feature } from '~/core/hooks/use-place-search';
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('query');
@@ -16,7 +18,22 @@ export async function GET(request: Request) {
     );
 
     const data = await mapboxRes.json();
-    return NextResponse.json({ features: data.features });
+
+    const mapBoxData: Feature[] = data.features.map(
+      (feature: { place_name: any; center: any; context: any[]; text: string }) => {
+        const zipcode = feature.context.find(cont => cont.id.includes('postcode'));
+        const province = feature.context.find(cont => cont.id.includes('region'));
+        return {
+          place_name: feature?.place_name,
+          center: feature?.center,
+          text: feature?.text,
+          zipcode: zipcode?.text,
+          province: province?.text,
+        };
+      }
+    );
+
+    return NextResponse.json({ features: mapBoxData });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: 'Failed to fetch address data' }, { status: 500 });

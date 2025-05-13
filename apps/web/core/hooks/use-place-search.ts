@@ -19,6 +19,8 @@ export type Feature = {
   place_name: string;
   center: [number, number];
   text: string;
+  zipcode: string;
+  province: string;
 };
 
 interface SearchOptions {
@@ -155,6 +157,7 @@ export const usePlaceSearch = ({ filterByTypes }: SearchOptions = {}) => {
     try {
       const res = await fetch(`/api/search-place?query=${encodeURIComponent(query)}`);
       const data = await res.json();
+      console.log(data);
       setPlacesResults(data.features || []);
       if (!data.features.length) {
         setIsEmpty(true);

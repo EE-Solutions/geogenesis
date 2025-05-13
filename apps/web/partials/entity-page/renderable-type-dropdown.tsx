@@ -11,6 +11,7 @@ import { SwitchableRenderableType } from '~/core/types';
 import { SquareButton } from '~/design-system/button';
 import { CheckboxChecked } from '~/design-system/icons/checkbox-checked';
 import { Date } from '~/design-system/icons/date';
+import { GeoLocation } from '~/design-system/icons/geo-location';
 import { Image } from '~/design-system/icons/image';
 import { Number } from '~/design-system/icons/number';
 import { Relation } from '~/design-system/icons/relation';
@@ -26,8 +27,8 @@ const icons: Record<SwitchableRenderableType, React.FunctionComponent<{ color?: 
   IMAGE: Image,
   CHECKBOX: CheckboxChecked,
   NUMBER: Number,
-  PLACE: Relation,
-  POINT: Relation,
+  POINT: GeoLocation,
+  PLACE: GeoLocation,
 };
 
 interface Props {
