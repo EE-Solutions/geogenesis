@@ -1,8 +1,9 @@
 'use client';
 
-import { GraphUrl, SystemIds } from '@graphprotocol/grc-20';
+import { GraphUrl, SystemIds, Relation as R } from '@graphprotocol/grc-20';
 import { Image } from '@graphprotocol/grc-20';
 import { INITIAL_RELATION_INDEX_VALUE } from '@graphprotocol/grc-20/constants';
+import { Reorder } from 'framer-motion';
 
 import * as React from 'react';
 
@@ -45,6 +46,8 @@ import { DateFormatDropdown } from './date-format-dropdown';
 import { getRenderableTypeSelectorOptions } from './get-renderable-type-options';
 import { NumberOptionsDropdown } from './number-options-dropdown';
 import { RenderableTypeDropdown } from './renderable-type-dropdown';
+import { reorderRelations } from '~/core/utils/relation-ordering';
+import { useQueryEntities } from '~/core/sync/use-store';
 
 interface Props {
   triples: ITriple[];
@@ -269,19 +272,71 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
   const typeOfRenderableType = relations[0].type;
   const property = properties?.[typeOfId];
   const relationValueTypes = property?.relationValueTypes;
+  const filterByTypes = property?.relationValueTypes?.map(r => r.typeId);
+
+  // State for managing reorderable items directly
+  const [relationItems, setRelationItems] = React.useState<RelationRenderableProperty[]>([]);
+
+  // Handle reordering with the reorderRelations utility
+  const handleReorder = React.useCallback((reorderedItems: RelationRenderableProperty[]) => {
+    if (!reorderedItems.length) return;
+
+    // Ensure all items have a relationId (required by reorderRelations)
+    const itemsWithRelationId = reorderedItems.map(item => {
+      if (!item.relationId && item.value) {
+        // Use value instead of id since RelationRenderableProperty doesn't have id
+        return { ...item, relationId: item.value };
+      }
+      return item;
+    });
+
+    // Check if the order actually changed by comparing relationIds
+    const currentIds = relationItems.map(item => item.relationId || item.value || '');
+    const newIds = itemsWithRelationId.map(item => item.relationId || item.value || '');
+
+    // If the order is exactly the same, don't do anything
+    if (currentIds.length === newIds.length &&
+        currentIds.every((id, index) => id === newIds[index])) {
+      return;
+    }
+
+    // Update UI state immediately for smooth animation
+    setRelationItems(itemsWithRelationId);
+
+    // Direct call to reorderRelations with properly formed items
+    reorderRelations(itemsWithRelationId, spaceId);
+  }, [relationItems, spaceId]);
+
+  // Update state when relations prop changes
+  React.useEffect(() => {
+    setRelationItems(relations);
+  }, [relations]);
+
+  // Check if we only have a placeholder item
+  const hasOnlyPlaceholder = relations.length === 1 && relations[0].placeholder === true;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {relations.map(r => {
-        const relationId = r.relationId;
-        const relationName = r.valueName;
-        const renderableType = r.type;
-        const relationValue = r.value;
+      <Reorder.Group
+        as="span"
+        axis="x"
+        values={relationItems}
+        onReorder={handleReorder}
+        layoutScroll
+        layout="preserve-aspect"
+        style={{ willChange: "transform" }}
+        className="flex flex-wrap gap-2 items-center"
+      >
+        {relationItems.map((r) => {
+          const relationId = r.relationId;
+          const relationName = r.valueName;
+          const renderableType = r.type;
+          const relationValue = r.value;
 
-        if (renderableType === 'IMAGE' && r.placeholder === true) {
-          return (
-            <div key={`relation-upload-image-${relationId}`}>
-              <PageImageField
+          if (renderableType === 'IMAGE' && r.placeholder === true) {
+            return (
+              <div key={`relation-upload-image-${relationId}`}>
+                <PageImageField
                 onImageChange={imageSrc => {
                   const { id: imageId, ops } = Image.make({ cid: imageSrc });
                   const [createRelationOp, setTripleOp] = ops;
@@ -424,30 +479,52 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
                 }}
                 variant="fixed"
               />
-            </div>
-          );
-        }
-
-        return (
-          <div key={`relation-${relationId}-${relationValue}`} className="mt-1">
-            <LinkableRelationChip
-              isEditing
-              onDelete={() => {
-                send({
-                  type: 'DELETE_RELATION',
-                  payload: {
-                    renderable: r,
-                  },
-                });
+              </div>
+            );
+          }
+ 
+          return (
+            <Reorder.Item
+              drag
+              key={relationId}
+              value={r}
+              as="span"
+              dragListener={true}
+              dragControls={undefined}
+              layoutId={relationId}
+              layout
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{
+                opacity: 1,
+                scale: 1,
+                transition: {
+                  type: 'spring',
+                  stiffness: 300,
+                  damping: 30
+                }
               }}
-              entityHref={NavUtils.toEntity(spaceId, relationValue ?? '')}
-              relationHref={NavUtils.toEntity(spaceId, relationId)}
+              exit={{ opacity: 0, scale: 0.8 }}
+              style={{ touchAction: 'none' }}
             >
-              {relationName ?? relationValue}
-            </LinkableRelationChip>
-          </div>
-        );
-      })}
+                <LinkableRelationChip
+                  isEditing
+                  onDelete={() => {
+                    send({
+                      type: 'DELETE_RELATION',
+                      payload: {
+                        renderable: r,
+                      },
+                    });
+                  }}
+                  entityHref={NavUtils.toEntity(spaceId, relationValue ?? '')}
+                  relationHref={NavUtils.toEntity(spaceId, relationId)}
+                >
+                  {relationName ?? relationValue}
+                </LinkableRelationChip>
+            </Reorder.Item>
+          );
+        })}
+      </Reorder.Group>
       {!hasPlaceholders && typeOfRenderableType === 'RELATION' && (
         <div className="mt-1">
           <SelectEntityAsPopover

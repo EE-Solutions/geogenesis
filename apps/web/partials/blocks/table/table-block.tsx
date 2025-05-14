@@ -2,7 +2,7 @@
 
 import { SystemIds } from '@graphprotocol/grc-20';
 import cx from 'classnames';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, Reorder } from 'framer-motion';
 import produce from 'immer';
 
 import * as React from 'react';
@@ -28,6 +28,7 @@ import { useEditable } from '~/core/state/editable-store';
 import { Cell, PropertySchema, Row } from '~/core/types';
 import { NavUtils } from '~/core/utils/utils';
 import { VALUE_TYPES } from '~/core/value-types';
+import { debounce } from '~/utils/debounce';
 
 import { IconButton } from '~/design-system/button';
 import { Create } from '~/design-system/icons/create';
@@ -49,6 +50,9 @@ import { TableBlockFilterPill } from './table-block-filter-pill';
 import { TableBlockGalleryItem } from './table-block-gallery-item';
 import { TableBlockListItem } from './table-block-list-item';
 import { TableBlockTable } from './table-block-table';
+import { DragHandle } from '~/design-system/icons/drag-handle';
+import { useAtom } from 'jotai';
+import { editingPropertiesAtom } from '~/atoms';
 
 interface Props {
   spaceId: string;
@@ -264,12 +268,27 @@ export const TableBlock = ({ spaceId }: Props) => {
   const isEditing = useUserIsEditing(spaceId);
   const canEdit = useCanUserEdit(spaceId);
   const { spaces } = useSpaces();
-  const { properties, rows, setPage, isLoading, hasNextPage, hasPreviousPage, pageNumber, propertiesSchema } =
+  const { properties, rows, sortedCollectionItems, reorderCollectionItems, setPage, isLoading, hasNextPage, hasPreviousPage, pageNumber, propertiesSchema } =
     useDataBlock();
   const { filterState, setFilterState } = useFilters();
   const { view, placeholder, shownColumnIds } = useView();
   const { source } = useSource();
   const { entries, onAddPlaceholder, onChangeEntry, onLinkEntry } = useEntries(rows, properties, spaceId, filterState);
+  
+  // Add a state to track reordering operations
+  const [isReordering, setIsReordering] = React.useState(false);
+
+  const [isEditingProperties, setIsEditingProperties] = useAtom(editingPropertiesAtom)
+
+  const [testData, setTestData] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    if (source.type === 'COLLECTION') {
+      setTestData(sortedCollectionItems);
+    }
+  }, [sortedCollectionItems, source.type]);
+   
+
 
   /**
    * There are several types of columns we might be filtering on, some of which aren't actually columns, so have
@@ -295,6 +314,96 @@ export const TableBlock = ({ spaceId }: Props) => {
 
   const hasPagination = hasPreviousPage || hasNextPage;
 
+    // This function has been deprecated in favor of directly handling reordering in handleReorderGroup
+
+  // Helper function to reorder an array without mutating the original
+  const reorderedArray = <T,>(array: T[], oldIndex: number, newIndex: number): T[] => {
+    const result = [...array];
+    const [removed] = result.splice(oldIndex, 1);
+    result.splice(newIndex, 0, removed);
+    return result;
+  };
+
+  // Create a debounced version of reorderCollectionItems to prevent duplicate events
+  // Using a ref to store the debounced function and timeout ID to allow cleanup
+  const debouncedFnRef = React.useRef<{
+    fn: (items: Array<{ relationId: string; index?: string; [key: string]: any }>) => void;
+    timeoutId: ReturnType<typeof setTimeout> | null;
+  }>({
+    fn: () => {},
+    timeoutId: null
+  });
+
+  React.useEffect(() => {
+    // reset is reording if it is true and is loading has changed from true to false
+    if (isReordering && !isLoading) {
+      setIsReordering(false);
+    }
+  }, [isLoading]);
+
+  // Update the debounced function when dependencies change
+  React.useEffect(() => {
+    const debouncedFn = debounce(
+      (items: Array<{ relationId: string; index?: string; [key: string]: any }>) => {
+        console.log('Debounced reordering called with', items.length, 'items');
+        reorderCollectionItems(items);
+      },
+      100 // 100ms debounce time
+    );
+
+    // Keep reference to the actual function implementation
+    debouncedFnRef.current.fn = debouncedFn;
+
+    // Cleanup function to cancel any pending debounce
+    return () => {
+      if (debouncedFnRef.current.timeoutId) {
+        clearTimeout(debouncedFnRef.current.timeoutId);
+        debouncedFnRef.current.timeoutId = null;
+      }
+    };
+  }, [reorderCollectionItems]);
+
+  // Function to call that tracks the timeout ID
+  const debouncedReorderCollectionItems = React.useCallback(
+    (items: Array<{ relationId: string; index?: string; [key: string]: any }>) => {
+      debouncedFnRef.current.fn(items);
+    },
+    []
+  );
+
+  // Simplified reordering handler for all view types
+  const handleReorderGroup = React.useCallback((reorderedItems: Row[]) => {
+    // Basic validations
+    if (!reorderedItems.length) return;
+    if (!isEditing || !canEdit) return;
+    if (source.type !== 'COLLECTION' || !sortedCollectionItems) return;
+    
+    // Set reordering flag to true before starting reorder operation
+    // Only set it if it's not already true to avoid unnecessary re-renders
+    if (!isReordering) {
+      setIsReordering(true);
+    }
+
+    // Extract the relationIds directly from the row columns
+    const reorderedRelationIds = reorderedItems
+      .map(row => {
+        const nameColumn = row.columns[SystemIds.NAME_ATTRIBUTE];
+        if (nameColumn?.relationId) {
+          return {
+            relationId: nameColumn.relationId,
+            id: nameColumn.relationId
+          };
+        }
+        return null;
+      })
+      .filter((item): item is { relationId: string; id: string } => item !== null);
+
+    if (reorderedRelationIds.length > 0) {
+      // Use the debounced version to prevent multiple rapid calls
+      debouncedReorderCollectionItems(reorderedRelationIds);
+    }
+  }, [isEditing, canEdit, source.type, sortedCollectionItems, debouncedReorderCollectionItems, isReordering]);
+
   let EntriesComponent = (
     <TableBlockTable
       source={source}
@@ -310,9 +419,66 @@ export const TableBlock = ({ spaceId }: Props) => {
   );
 
   if (view === 'LIST') {
-    EntriesComponent = (
+    EntriesComponent = isEditing && source.type === 'COLLECTION' ? (
+      <Reorder.Group
+        axis="y"
+        values={entries}
+        layoutScroll
+        layout
+        onReorder={handleReorderGroup}
+        className="flex w-full flex-col space-y-4"
+      >
+        {entries.map((row) => {          
+          return (
+            <Reorder.Item
+              key={row.entityId}
+              value={row}
+              drag
+              dragListener={isEditing}
+              as="div"
+              style={{ touchAction: "none" }}
+              className="group"
+              layoutId={`list-${row.entityId}`}
+              layout
+              initial={{ opacity: 0.8, scale: 0.98 }}
+              animate={{
+                opacity: 1,
+                scale: 1,
+                transition: {
+                  type: 'spring',
+                  stiffness: 300,
+                  damping: 30
+                }
+              }}
+            >
+              <div className="relative flex items-center">
+                <div className="absolute left-0 w-6 flex-shrink-0 flex items-center justify-center z-10 cursor-move opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                  <div className="text-grey-04 hover:text-text">
+                    <DragHandle />
+                  </div>
+                </div>
+                <div className="pl-6 w-full">
+                  <TableBlockListItem
+                    isEditing={isEditing}
+                    columns={row.columns}
+                    currentSpaceId={spaceId}
+                    rowEntityId={row.entityId}
+                    isPlaceholder={Boolean(row.placeholder)}
+                    onChangeEntry={onChangeEntry}
+                    onLinkEntry={onLinkEntry}
+                    properties={propertiesSchema}
+                    relationId={row.columns[SystemIds.NAME_ATTRIBUTE]?.relationId}
+                    source={source}
+                  />
+                </div>
+              </div>
+            </Reorder.Item>
+          );
+        })}
+      </Reorder.Group>
+    ) : (
       <div className="flex w-full flex-col space-y-4">
-        {entries.map((row, index: number) => {
+        {entries.map((row, index: number) => {          
           return (
             <TableBlockListItem
               isEditing={isEditing}
@@ -334,7 +500,64 @@ export const TableBlock = ({ spaceId }: Props) => {
   }
 
   if (view === 'BULLETED_LIST') {
-    EntriesComponent = (
+    EntriesComponent = isEditing && source.type === 'COLLECTION' ? (
+      <Reorder.Group
+        axis="y"
+        values={entries}
+        layoutScroll
+        layout
+        onReorder={handleReorderGroup}
+        className="flex w-full flex-col"
+      >
+        {entries.map((row) => {
+          return (
+            <Reorder.Item
+              key={row.entityId}
+              value={row}
+              drag
+              dragListener={isEditing}
+              as="div"
+              style={{ touchAction: "none" }}
+              className="group"
+              layoutId={`bullet-${row.entityId}`}
+              layout
+              initial={{ opacity: 0.8, scale: 0.98 }}
+              animate={{
+                opacity: 1,
+                scale: 1,
+                transition: {
+                  type: 'spring',
+                  stiffness: 300,
+                  damping: 30
+                }
+              }}
+            >
+              <div className="relative flex items-center">
+                <div className="absolute left-0 w-6 flex-shrink-0 flex items-center justify-center z-10 cursor-move opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                  <div className="text-grey-04 hover:text-text">
+                    <DragHandle />
+                  </div>
+                </div>
+                <div className="pl-6 w-full">
+                  <TableBlockBulletedListItem
+                    isEditing={isEditing}
+                    columns={row.columns}
+                    currentSpaceId={spaceId}
+                    rowEntityId={row.entityId}
+                    isPlaceholder={Boolean(row.placeholder)}
+                    onChangeEntry={onChangeEntry}
+                    onLinkEntry={onLinkEntry}
+                    properties={propertiesSchema}
+                    relationId={row.columns[SystemIds.NAME_ATTRIBUTE]?.relationId}
+                    source={source}
+                  />
+                </div>
+              </div>
+            </Reorder.Item>
+          );
+        })}
+      </Reorder.Group>
+    ) : (
       <div className="flex w-full flex-col">
         {entries.map((row, index: number) => {
           return (
@@ -360,23 +583,57 @@ export const TableBlock = ({ spaceId }: Props) => {
   if (view === 'GALLERY') {
     EntriesComponent = (
       <div className="grid grid-cols-3 gap-x-4 gap-y-10 sm:grid-cols-2">
-        {entries.map((row, index: number) => {
-          return (
-            <TableBlockGalleryItem
-              key={`${row.entityId}-${index}`}
-              rowEntityId={row.entityId}
-              isEditing={isEditing}
-              columns={row.columns}
-              currentSpaceId={spaceId}
-              onChangeEntry={onChangeEntry}
-              onLinkEntry={onLinkEntry}
-              isPlaceholder={Boolean(row.placeholder)}
-              properties={propertiesSchema}
-              relationId={row.columns[SystemIds.NAME_ATTRIBUTE]?.relationId}
-              source={source}
-            />
-          );
-        })}
+        <Reorder.Group
+          values={entries}
+          layoutScroll
+          layout
+          onReorder={handleReorderGroup}
+          className="contents" // This makes the Reorder.Group not affect the grid layout
+        >
+          {entries.map((row, index: number) => {
+            return (
+              <div key={`${row.entityId}-${index}`} className="w-full">
+                <Reorder.Item
+                  key={row.entityId}
+                  value={row}
+                  as="div"
+                  drag
+                  dragListener={isEditing}
+                  style={{ touchAction: "none" }}
+                  className="relative group pl-6"
+                  layoutId={`gallery-${row.entityId}`}
+                  layout
+                  initial={{ opacity: 0.8, scale: 0.95 }}
+                  animate={{
+                    opacity: 1,
+                    scale: 1,
+                    transition: {
+                      type: 'spring',
+                      stiffness: 300,
+                      damping: 30
+                    }
+                  }}
+                >
+                  <div className="absolute left-0 top-1/2 transform -translate-y-1/2 z-10 bg-white/90 rounded-full p-1 shadow-sm cursor-move opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                    <DragHandle />
+                  </div>
+                  <TableBlockGalleryItem
+                    rowEntityId={row.entityId}
+                    isEditing={isEditing}
+                    columns={row.columns}
+                    currentSpaceId={spaceId}
+                    onChangeEntry={onChangeEntry}
+                    onLinkEntry={onLinkEntry}
+                    isPlaceholder={Boolean(row.placeholder)}
+                    properties={propertiesSchema}
+                    relationId={row.columns[SystemIds.NAME_ATTRIBUTE]?.relationId}
+                    source={source}
+                  />
+                </Reorder.Item>
+              </div>
+            );
+          })}
+        </Reorder.Group>
       </div>
     );
   }
@@ -456,7 +713,7 @@ export const TableBlock = ({ spaceId }: Props) => {
       )}
 
       <motion.div layout="position" transition={{ duration: 0.15 }}>
-        {isLoading ? (
+        {isLoading && !isReordering && !isEditingProperties ? (
           <>
             <TableBlockLoadingPlaceholder />
           </>

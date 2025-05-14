@@ -53,8 +53,50 @@ export function sortEntityPageTriples(visibleTriples: Triple[], schemaTriples: T
 }
 
 export function sortRenderables(renderables: RenderableProperty[], isRelationPage?: boolean) {
-  /* Visible triples includes both real triples and placeholder triples */
-  return renderables.sort((renderableA, renderableB) => {
+  /* First, group renderables by attributeId */
+  const renderablesByAttribute: Record<string, RenderableProperty[]> = {};
+
+  renderables.forEach(r => {
+    if (!renderablesByAttribute[r.attributeId]) {
+      renderablesByAttribute[r.attributeId] = [];
+    }
+    renderablesByAttribute[r.attributeId].push(r);
+  });
+
+  /* Sort relations within each attribute group by their index if present */
+  Object.keys(renderablesByAttribute).forEach(attributeId => {
+    const items = renderablesByAttribute[attributeId];
+
+    // Only sort if we have more than one item and they're relations
+    if (items.length > 1 && 'relationId' in items[0] && 'relationIndex' in items[0]) {
+      renderablesByAttribute[attributeId] = items.sort((a, b) => {
+        // Cast to make TypeScript happy since we've checked these properties exist
+        const aRelation = a as any;
+        const bRelation = b as any;
+
+        // Sort by index if both have indices
+        if (aRelation.relationIndex && bRelation.relationIndex) {
+          return aRelation.relationIndex.localeCompare(bRelation.relationIndex, undefined, { numeric: true });
+        }
+
+        // If only one has index, put the one with index first
+        if (aRelation.relationIndex && !bRelation.relationIndex) return -1;
+        if (!aRelation.relationIndex && bRelation.relationIndex) return 1;
+
+        // Default to id sorting for consistent order
+        return aRelation.relationId.localeCompare(bRelation.relationId);
+      });
+    }
+  });
+
+  /* Flatten sorted groups back to an array */
+  const sortedWithinGroups: RenderableProperty[] = [];
+  Object.values(renderablesByAttribute).forEach(group => {
+    sortedWithinGroups.push(...group);
+  });
+
+  /* Now perform the attribute-level sorting */
+  return sortedWithinGroups.sort((renderableA, renderableB) => {
     // Always put an empty, placeholder triple with no attribute id at the bottom
     // of the list
     if (renderableA.attributeId === '') return 1;

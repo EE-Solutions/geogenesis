@@ -108,6 +108,7 @@ export function toRenderables({
         attributeName: r.typeOf.name,
         spaceId: r.space,
         relationId: r.id,
+        relationIndex: r.index,
         value: r.toEntity.value, // This is either the image URL or the entity ID
         valueName: r.toEntity.name,
       };

@@ -164,6 +164,7 @@ function RelationsGroup({ relations }: { relations: RelationRenderableProperty[]
   const attributeName = relations[0].attributeName;
   const spaceId = relations[0].spaceId;
 
+  // Use relations directly, as they are pre-sorted upstream
   return (
     <>
       <div key={`${attributeId}-${attributeName}`} className="break-words">

@@ -88,6 +88,7 @@ type RelationPropertyProperties = {
   attributeName: string | null;
   spaceId: string;
   relationId: string;
+  relationIndex?: string;
   valueName: string | null; // name of the entity
   value: string;
   placeholder?: boolean;
@@ -216,6 +217,7 @@ export type Cell = {
   renderedPropertyId?: string;
   collectionId?: string;
   relationId?: string;
+  index?: string;  // Added for relation ordering
 };
 
 export type Row = {
