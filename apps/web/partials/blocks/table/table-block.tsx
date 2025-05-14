@@ -51,6 +51,8 @@ import { TableBlockGalleryItem } from './table-block-gallery-item';
 import { TableBlockListItem } from './table-block-list-item';
 import { TableBlockTable } from './table-block-table';
 import { DragHandle } from '~/design-system/icons/drag-handle';
+import { useAtom } from 'jotai';
+import { editingPropertiesAtom } from '~/atoms';
 
 interface Props {
   spaceId: string;
@@ -272,6 +274,11 @@ export const TableBlock = ({ spaceId }: Props) => {
   const { view, placeholder, shownColumnIds } = useView();
   const { source } = useSource();
   const { entries, onAddPlaceholder, onChangeEntry, onLinkEntry } = useEntries(rows, properties, spaceId, filterState);
+  
+  // Add a state to track reordering operations
+  const [isReordering, setIsReordering] = React.useState(false);
+
+  const [isEditingProperties, setIsEditingProperties] = useAtom(editingPropertiesAtom)
 
   const [testData, setTestData] = React.useState<any[]>([]);
 
@@ -327,6 +334,13 @@ export const TableBlock = ({ spaceId }: Props) => {
     timeoutId: null
   });
 
+  React.useEffect(() => {
+    // reset is reording if it is true and is loading has changed from true to false
+    if (isReordering && !isLoading) {
+      setIsReordering(false);
+    }
+  }, [isLoading]);
+
   // Update the debounced function when dependencies change
   React.useEffect(() => {
     const debouncedFn = debounce(
@@ -363,30 +377,32 @@ export const TableBlock = ({ spaceId }: Props) => {
     if (!reorderedItems.length) return;
     if (!isEditing || !canEdit) return;
     if (source.type !== 'COLLECTION' || !sortedCollectionItems) return;
+    
+    // Set reordering flag to true before starting reorder operation
+    // Only set it if it's not already true to avoid unnecessary re-renders
+    if (!isReordering) {
+      setIsReordering(true);
+    }
 
     // Extract the relationIds directly from the row columns
-    // Looking at the example from console, we see that the collection's relationId
-    // is stored in row.columns[SystemIds.NAME_ATTRIBUTE].relationId
     const reorderedRelationIds = reorderedItems
       .map(row => {
-        // Try to find the relationId in the columns
         const nameColumn = row.columns[SystemIds.NAME_ATTRIBUTE];
         if (nameColumn?.relationId) {
           return {
             relationId: nameColumn.relationId,
-            // Keep any other properties needed by reorderCollectionItems
             id: nameColumn.relationId
           };
         }
         return null;
       })
-      .filter((item): item is { relationId: string; id: string } => item !== null); // Type guard to satisfy TypeScript
+      .filter((item): item is { relationId: string; id: string } => item !== null);
 
     if (reorderedRelationIds.length > 0) {
       // Use the debounced version to prevent multiple rapid calls
       debouncedReorderCollectionItems(reorderedRelationIds);
     }
-  }, [isEditing, canEdit, source.type, sortedCollectionItems, debouncedReorderCollectionItems]);
+  }, [isEditing, canEdit, source.type, sortedCollectionItems, debouncedReorderCollectionItems, isReordering]);
 
   let EntriesComponent = (
     <TableBlockTable
@@ -697,7 +713,7 @@ export const TableBlock = ({ spaceId }: Props) => {
       )}
 
       <motion.div layout="position" transition={{ duration: 0.15 }}>
-        {isLoading ? (
+        {isLoading && !isReordering && !isEditingProperties ? (
           <>
             <TableBlockLoadingPlaceholder />
           </>
