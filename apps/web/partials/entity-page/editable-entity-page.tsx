@@ -9,6 +9,7 @@ import * as React from 'react';
 import { StoreRelation } from '~/core/database/types';
 import { DB } from '~/core/database/write';
 import { useEditEvents } from '~/core/events/edit-events';
+import { useGeoCoordinates } from '~/core/hooks/use-geo-coordinates';
 import { useProperties } from '~/core/hooks/use-properties';
 import { useRelationship } from '~/core/hooks/use-relationship';
 import { useRenderables } from '~/core/hooks/use-renderables';
@@ -54,7 +55,7 @@ interface Props {
   relationsOut: Relation[];
 }
 
-export function EditableEntityPage({ id, spaceId, triples: serverTriples }: Props) {
+export function EditableEntityPage({ id, spaceId, triples: serverTriples, relationsOut }: Props) {
   const entityId = id;
 
   const [isRelationPage] = useRelationship(entityId, spaceId);
@@ -270,6 +271,8 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
   const typeOfRenderableType = relations[0].type;
   const property = properties?.[typeOfId];
   const relationValueTypes = property?.relationValueTypes;
+
+  const geoData = useGeoCoordinates(id, spaceId);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -500,7 +503,7 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
         }
 
         return (
-          <div key={`relation-${relationId}-${relationValue}`} className="mt-1">
+          <div key={`relation-${relationId}-${relationValue}`} className="mt-1 w-full">
             <LinkableRelationChip
               isEditing
               onDelete={() => {
@@ -516,6 +519,20 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
             >
               {relationName ?? relationValue}
             </LinkableRelationChip>
+            {renderableType === 'PLACE' && (
+              <div className="flex w-full flex-col">
+                <span className="my-3 text-[19px] leading-[29px]">{geoData?.name}</span>
+                <GeoLocationPointFields
+                  key={relationId}
+                  variant="body"
+                  placeholder="Add value..."
+                  aria-label="text-field"
+                  value={geoData?.geoLocation}
+                  onChange={() => {}}
+                  hideInputs={true}
+                />
+              </div>
+            )}
           </div>
         );
       })}

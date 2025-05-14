@@ -172,7 +172,6 @@ export const InputPlace = ({
         },
         {
           entityId: addressEntityId,
-          //Should be location property
           attributeId: SystemIds.GEO_LOCATION_PROPERTY,
           attributeName: 'Geo Location',
           entityName: result.place_name,
