@@ -17,10 +17,8 @@ import { useDebouncedValue } from './use-debounced-value';
 
 export type Feature = {
   place_name: string;
-  center: [number, number];
+  mapbox_id: string;
   text: string;
-  zipcode: string;
-  province: string;
 };
 
 interface SearchOptions {
@@ -42,7 +40,7 @@ export const usePlaceSearch = ({ filterByTypes }: SearchOptions = {}) => {
   const maybeEntityId = debouncedQuery.trim();
 
   // Temporary hardcoded filterByTypes for test purposes
-  const mockFilterByTypes = ['VdTsW1mGiy1XSooJaBBLc4'];
+  const mockFilterByTypes = ['Fr887xssrH7RbK3S5gnLVb'];
 
   const { data: resultsEntities, isLoading: isEntitiesLoading } = useQuery({
     enabled: debouncedQuery !== '',
@@ -155,11 +153,17 @@ export const usePlaceSearch = ({ filterByTypes }: SearchOptions = {}) => {
       return;
     }
     try {
-      const res = await fetch(`/api/search-place?query=${encodeURIComponent(query)}`);
+      let sessionToken = sessionStorage.getItem('mapboxSessionToken');
+
+      if (!sessionToken) {
+        sessionToken = crypto.randomUUID();
+        sessionStorage.setItem('mapboxSessionToken', sessionToken);
+      }
+
+      const res = await fetch(`/api/places/search?query=${encodeURIComponent(query)}&sessionToken=${sessionToken}`);
       const data = await res.json();
-      console.log(data);
-      setPlacesResults(data.features || []);
-      if (!data.features.length) {
+      setPlacesResults(data.suggestions || []);
+      if (!data.suggestions.length) {
         setIsEmpty(true);
       }
     } catch (error: any) {

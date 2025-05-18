@@ -503,7 +503,15 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
         }
 
         return (
-          <div key={`relation-${relationId}-${relationValue}`} className="mt-1 w-full">
+          <div
+            key={`relation-${relationId}-${relationValue}`}
+            className={`mt-1 ${
+              renderableType === 'PLACE' ||
+              (renderableType === 'RELATION' && r.attributeId === 'Wx8o6Dahq5v3HhVSaLgwXn')
+                ? 'w-full'
+                : ''
+            }`}
+          >
             <LinkableRelationChip
               isEditing
               onDelete={() => {
@@ -519,7 +527,11 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
             >
               {relationName ?? relationValue}
             </LinkableRelationChip>
-            {renderableType === 'PLACE' && (
+            {renderableType === 'PLACE' ||
+            // Currently, when we create an entity with a venue property and renderable type = 'PLACE',
+            // the entity ends up with type = 'RELATION' after creation.
+            // So temporary I'll add some checks to render it
+            (renderableType === 'RELATION' && r.attributeId === 'Wx8o6Dahq5v3HhVSaLgwXn') ? (
               <div className="flex w-full flex-col">
                 <span className="my-3 text-[19px] leading-[29px]">{geoData?.name}</span>
                 <GeoLocationPointFields
@@ -532,7 +544,7 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
                   hideInputs={true}
                 />
               </div>
-            )}
+            ) : null}
           </div>
         );
       })}

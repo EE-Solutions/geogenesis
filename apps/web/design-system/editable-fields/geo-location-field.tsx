@@ -91,7 +91,7 @@ export function GeoLocationPointFields({ ...props }: PageGeoLocationFieldProps) 
                 {...props}
                 onChange={e => handlePointValueChange('latitude', e.currentTarget.value)}
                 value={pointValues.latitude}
-                className={`${textareaStyles({ variant: props.variant })} max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap font-normal placeholder:font-normal`}
+                className={`${textareaStyles({ variant: props.variant })} max-w-[110px] overflow-hidden text-ellipsis whitespace-nowrap font-normal placeholder:font-normal`}
               />
             </div>
             <div className="flex items-center gap-2">
@@ -101,7 +101,7 @@ export function GeoLocationPointFields({ ...props }: PageGeoLocationFieldProps) 
                 {...props}
                 onChange={e => handlePointValueChange('longitude', e.currentTarget.value)}
                 value={pointValues.longitude}
-                className={`${textareaStyles({ variant: props.variant })} max-w-[100px] overflow-hidden text-ellipsis whitespace-nowrap font-normal placeholder:font-normal`}
+                className={`${textareaStyles({ variant: props.variant })} max-w-[110px] overflow-hidden text-ellipsis whitespace-nowrap font-normal placeholder:font-normal`}
               />
             </div>
           </div>

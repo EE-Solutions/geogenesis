@@ -17,6 +17,7 @@ import { ID } from '~/core/id';
 import { EntityId } from '~/core/io/schema';
 import type { RelationValueType } from '~/core/types';
 import { getImagePath } from '~/core/utils/utils';
+import { GeoPoint } from '~/core/utils/utils';
 
 import { Tag } from '~/design-system/tag';
 import { Toggle } from '~/design-system/toggle';
@@ -153,56 +154,50 @@ export const InputPlace = ({
   };
 
   //Create/import logic
-  const createPlaceWithAddress = (result: Feature) => {
+  const createPlaceWithAddress = async (result: Feature) => {
     const addressEntityId = ID.createEntityId();
     const placeEntityId = ID.createEntityId();
 
+    //Get coordinates from mapbox
+    const coordinates = await GeoPoint.fetchCoordinatesFromMapbox(result.mapbox_id);
+
     // Create Address entity
     DB.upsertMany(
-      [
-        {
-          entityId: addressEntityId,
-          attributeId: SystemIds.NAME_ATTRIBUTE,
-          attributeName: 'Name',
-          entityName: result.place_name,
-          value: {
-            type: 'TEXT',
-            value: result.place_name,
-          },
-        },
-        {
-          entityId: addressEntityId,
-          attributeId: SystemIds.GEO_LOCATION_PROPERTY,
-          attributeName: 'Geo Location',
-          entityName: result.place_name,
-          value: {
-            type: 'POINT',
-            value: result.center.reverse().join(', ') ?? '',
-          },
-        },
-        {
-          entityId: addressEntityId,
-          //Change to SystemIds (ZIP)
-          attributeId: 'MUyEdHoApYzU1ppq6MQVVD',
-          attributeName: 'Postcode/ZIP',
-          entityName: result.place_name,
-          value: {
-            type: 'TEXT',
-            value: result.zipcode ?? '',
-          },
-        },
-        {
-          entityId: addressEntityId,
-          //Change to SystemIds (State)
-          attributeId: '9ranP4P8RAc7PjnYojUkZm',
-          attributeName: 'State/province',
-          entityName: result.place_name,
-          value: {
-            type: 'TEXT',
-            value: result.province ?? '',
-          },
-        },
-      ],
+      coordinates
+        ? [
+            {
+              entityId: addressEntityId,
+              attributeId: SystemIds.NAME_ATTRIBUTE,
+              attributeName: 'Name',
+              entityName: result.text,
+              value: {
+                type: 'TEXT',
+                value: result.text,
+              },
+            },
+            {
+              entityId: addressEntityId,
+              attributeId: SystemIds.GEO_LOCATION_PROPERTY,
+              attributeName: 'Geo Location',
+              entityName: result.text,
+              value: {
+                type: 'POINT',
+                value: GeoPoint.formatCoordinates(coordinates.latitude, coordinates.longitude),
+              },
+            },
+          ]
+        : [
+            {
+              entityId: addressEntityId,
+              attributeId: SystemIds.NAME_ATTRIBUTE,
+              attributeName: 'Name',
+              entityName: result.text,
+              value: {
+                type: 'TEXT',
+                value: result.text,
+              },
+            },
+          ],
       spaceId
     );
 
@@ -222,10 +217,10 @@ export const InputPlace = ({
         entityId: placeEntityId,
         attributeId: SystemIds.NAME_ATTRIBUTE,
         attributeName: 'Name',
-        entityName: result.text,
+        entityName: result.place_name,
         value: {
           type: 'TEXT',
-          value: result.text,
+          value: result.place_name,
         },
       },
       spaceId
@@ -234,20 +229,20 @@ export const InputPlace = ({
     //Add type place to place entity
     //Hardcoded Place ID
     const PLACE_ID = 'Fr887xssrH7RbK3S5gnLVb';
-    createRelation(PLACE_ID, 'Place', placeEntityId, result.text, SystemIds.TYPES_ATTRIBUTE, 'Types');
+    createRelation(PLACE_ID, 'Place', placeEntityId, result.place_name, SystemIds.TYPES_ATTRIBUTE, 'Types');
 
     //Create relation in place entity with address entity
     createRelation(
       addressEntityId,
-      result.place_name,
-      placeEntityId,
       result.text,
+      placeEntityId,
+      result.place_name,
       SystemIds.ADDRESS_ATTRIBUTE,
       'Address'
     );
 
     //Create relation between place entity and current working entity
-    onDone?.({ id: placeEntityId, name: result.text }, true);
+    onDone?.({ id: placeEntityId, name: result.place_name }, true);
   };
 
   return (
@@ -296,7 +291,7 @@ export const InputPlace = ({
                   {!result ? (
                     <ResizableContainer>
                       <div className="no-scrollbar flex max-h-[219px] flex-col overflow-y-auto overflow-x-clip bg-white">
-                        {!results?.length && isLoading && isEntitiesLoading && (
+                        {isEntitiesLoading && (
                           <div className="w-full bg-white px-3 py-2">
                             <div className="truncate text-resultTitle text-text">Loading...</div>
                           </div>
@@ -404,18 +399,15 @@ export const InputPlace = ({
                                   >
                                     <div className="flex w-full justify-between">
                                       <div className="max-w-full truncate text-resultTitle text-text">
-                                        {result.text}
+                                        {result.place_name}
                                       </div>
-                                      {/* Add Import logic */}
                                       <button className="text-[0.875rem] font-normal text-grey-04">Import</button>
                                     </div>
 
-                                    {result.place_name && (
+                                    {result.text && (
                                       <>
                                         <Truncate maxLines={3} shouldTruncate variant="footnote" className="mt-1">
-                                          <p className="!text-[0.875rem] leading-[1.2] text-text">
-                                            {result.place_name}
-                                          </p>
+                                          <p className="!text-[0.875rem] leading-[1.2] text-text">{result.text}</p>
                                         </Truncate>
                                       </>
                                     )}
