@@ -106,6 +106,8 @@ export const InputPlace = ({
     filterByTypes,
   });
 
+  console.log(resultEntities);
+
   if (query === '' && result !== null) {
     startTransition(() => {
       setResult(null);
@@ -305,7 +307,12 @@ export const InputPlace = ({
                             {resultEntities?.map((resultEn, index) => (
                               <div key={`${index}-entities`} className="w-full">
                                 <div className="p-1">
-                                  <button className="relative z-10 flex w-full flex-col rounded-md px-3 py-2 transition-colors duration-150 hover:bg-grey-01 focus:bg-grey-01 focus:outline-none">
+                                  <button
+                                    onClick={() => {
+                                      onDone?.({ id: resultEn.id, name: resultEn.name }, true);
+                                    }}
+                                    className="relative z-10 flex w-full flex-col rounded-md px-3 py-2 transition-colors duration-150 hover:bg-grey-01 focus:bg-grey-01 focus:outline-none"
+                                  >
                                     {isShowingIds && (
                                       <div className="mb-2 text-[0.6875rem] text-grey-04">ID · {resultEn.id}</div>
                                     )}
