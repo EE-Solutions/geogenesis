@@ -2,8 +2,10 @@ import { SystemIds } from '@graphprotocol/grc-20';
 
 import * as React from 'react';
 
+import { useGeoCoordinates } from '~/core/hooks/use-geo-coordinates';
 import { useRelationship } from '~/core/hooks/use-relationship';
 import { useRenderables } from '~/core/hooks/use-renderables';
+import { useEntityPageStore } from '~/core/state/entity-page-store/entity-store';
 import { useQueryEntity } from '~/core/sync/use-store';
 import { Relation, RelationRenderableProperty, Triple, TripleRenderableProperty } from '~/core/types';
 import { GeoNumber, GeoPoint, NavUtils, getImagePath } from '~/core/utils/utils';
@@ -164,6 +166,9 @@ function RelationsGroup({ relations }: { relations: RelationRenderableProperty[]
   const attributeName = relations[0].attributeName;
   const spaceId = relations[0].spaceId;
 
+  const { id } = useEntityPageStore();
+  const geoData = useGeoCoordinates(id, spaceId);
+
   return (
     <>
       <div key={`${attributeId}-${attributeName}`} className="break-words">
@@ -182,6 +187,20 @@ function RelationsGroup({ relations }: { relations: RelationRenderableProperty[]
             if (renderableType === 'IMAGE') {
               const imagePath = getImagePath(relationValue ?? '');
               return <ImageZoom key={`image-${relationId}-${relationValue}`} imageSrc={imagePath} />;
+            }
+
+            if (renderableType === 'RELATION' && r.attributeId === 'Wx8o6Dahq5v3HhVSaLgwXn' && geoData.geoLocation) {
+              // Currently, when we create an entity with a venue property and renderable type = 'PLACE',
+              // the entity ends up with type = 'RELATION' after creation.
+              // To render the map properly on the entity page, it needs to be type = 'PLACE'.
+              const coordinates = GeoPoint.parseCoordinates(geoData.geoLocation);
+              return (
+                <div key={`string-${r.attributeId}-${geoData.geoLocation}`} className="flex w-full flex-col gap-2">
+                  <Text as="p">{relationName}</Text>
+                  <Text as="p">({geoData.geoLocation})</Text>
+                  <Map latitude={coordinates?.latitude} longitude={coordinates?.longitude} />
+                </div>
+              );
             }
 
             return (

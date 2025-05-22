@@ -9,6 +9,7 @@ import * as React from 'react';
 import { StoreRelation } from '~/core/database/types';
 import { DB } from '~/core/database/write';
 import { useEditEvents } from '~/core/events/edit-events';
+import { useGeoCoordinates } from '~/core/hooks/use-geo-coordinates';
 import { useProperties } from '~/core/hooks/use-properties';
 import { useRelationship } from '~/core/hooks/use-relationship';
 import { useRenderables } from '~/core/hooks/use-renderables';
@@ -36,6 +37,7 @@ import { NumberField } from '~/design-system/editable-fields/number-field';
 import { WebUrlField } from '~/design-system/editable-fields/web-url-field';
 import { Create } from '~/design-system/icons/create';
 import { Trash } from '~/design-system/icons/trash';
+import { InputPlace } from '~/design-system/input-address';
 import { PrefetchLink as Link } from '~/design-system/prefetch-link';
 import { SelectEntity } from '~/design-system/select-entity';
 import { SelectEntityAsPopover } from '~/design-system/select-entity-dialog';
@@ -53,7 +55,7 @@ interface Props {
   relationsOut: Relation[];
 }
 
-export function EditableEntityPage({ id, spaceId, triples: serverTriples }: Props) {
+export function EditableEntityPage({ id, spaceId, triples: serverTriples, relationsOut }: Props) {
   const entityId = id;
 
   const [isRelationPage] = useRelationship(entityId, spaceId);
@@ -111,7 +113,7 @@ export function EditableEntityPage({ id, spaceId, triples: serverTriples }: Prop
                     }
                   }}
                 />
-                {renderableType === 'RELATION' || renderableType === 'IMAGE' ? (
+                {renderableType === 'RELATION' || renderableType === 'IMAGE' || renderableType === 'PLACE' ? (
                   <RelationsGroup
                     key={attributeId}
                     relations={renderables as RelationRenderableProperty[]}
@@ -269,6 +271,8 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
   const typeOfRenderableType = relations[0].type;
   const property = properties?.[typeOfId];
   const relationValueTypes = property?.relationValueTypes;
+
+  const geoData = useGeoCoordinates(id, spaceId);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -428,8 +432,86 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
           );
         }
 
+        if (renderableType === 'PLACE' && r.placeholder === true) {
+          return (
+            <InputPlace
+              key={`place-input-${relationId}`}
+              relationValueTypes={relationValueTypes ? relationValueTypes : undefined}
+              spaceId={spaceId}
+              onDone={result => {
+                const newRelationId = ID.createEntityId();
+
+                const newRelation: StoreRelation = {
+                  id: newRelationId,
+                  space: spaceId,
+                  index: INITIAL_RELATION_INDEX_VALUE,
+                  typeOf: {
+                    id: EntityId(r.attributeId),
+                    name: r.attributeName,
+                  },
+                  fromEntity: {
+                    id: EntityId(id),
+                    name: name,
+                  },
+                  toEntity: {
+                    id: EntityId(result.id),
+                    name: result.name,
+                    renderableType: 'PLACE',
+                    value: EntityId(result.id),
+                  },
+                };
+
+                DB.upsertRelation({
+                  relation: newRelation,
+                  spaceId,
+                });
+
+                if (result.space) {
+                  DB.upsert(
+                    {
+                      attributeId: SystemIds.RELATION_TO_ATTRIBUTE,
+                      attributeName: 'To Entity',
+                      entityId: newRelationId,
+                      entityName: null,
+                      value: {
+                        type: 'URL',
+                        value: GraphUrl.fromEntityId(result.id, { spaceId: result.space }),
+                      },
+                    },
+                    spaceId
+                  );
+
+                  if (result.verified) {
+                    DB.upsert(
+                      {
+                        attributeId: SystemIds.VERIFIED_SOURCE_ATTRIBUTE,
+                        attributeName: 'Verified Source',
+                        entityId: newRelationId,
+                        entityName: null,
+                        value: {
+                          type: 'CHECKBOX',
+                          value: '1',
+                        },
+                      },
+                      spaceId
+                    );
+                  }
+                }
+              }}
+            />
+          );
+        }
+
         return (
-          <div key={`relation-${relationId}-${relationValue}`} className="mt-1">
+          <div
+            key={`relation-${relationId}-${relationValue}`}
+            className={`mt-1 ${
+              renderableType === 'PLACE' ||
+              (renderableType === 'RELATION' && r.attributeId === 'Wx8o6Dahq5v3HhVSaLgwXn')
+                ? 'w-full'
+                : ''
+            }`}
+          >
             <LinkableRelationChip
               isEditing
               onDelete={() => {
@@ -445,6 +527,24 @@ function RelationsGroup({ relations, properties }: RelationsGroupProps) {
             >
               {relationName ?? relationValue}
             </LinkableRelationChip>
+            {renderableType === 'PLACE' ||
+            // Currently, when we create an entity with a venue property and renderable type = 'PLACE',
+            // the entity ends up with type = 'RELATION' after creation.
+            // So temporary I'll add some checks to render it
+            (renderableType === 'RELATION' && r.attributeId === 'Wx8o6Dahq5v3HhVSaLgwXn') ? (
+              <div className="flex w-full flex-col">
+                <span className="my-3 text-[19px] leading-[29px]">{geoData?.name}</span>
+                <GeoLocationPointFields
+                  key={relationId}
+                  variant="body"
+                  placeholder="Add value..."
+                  aria-label="text-field"
+                  value={geoData?.geoLocation}
+                  onChange={() => {}}
+                  hideInputs={true}
+                />
+              </div>
+            ) : null}
           </div>
         );
       })}
