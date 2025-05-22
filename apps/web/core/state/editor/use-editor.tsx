@@ -189,7 +189,6 @@ const makeBlocksRelations = async ({
       entityPageId,
     });
 
-    console.log('new relation', newRelation);
 
     DB.upsertRelation({ relation: newRelation, spaceId });
   }
@@ -279,22 +278,8 @@ export function useEditorStore() {
         const isSSR = typeof window === 'undefined';
         const json = isSSR ? generateServerJSON(html, tiptapExtensions) : generateJSON(html, tiptapExtensions);
 
-        function mergeListItems(node: {
-          content?: Array<{
-            type: string;
-            content?: Array<any>;
-          }>;
-        }) {
-          if (node?.content && node?.content?.length > 1) {
-            const firstNode = node?.content?.[0];
-            if (firstNode?.content?.[0]?.content) {
-              firstNode.content[0].content.push(...node.content.slice(1));
-            }
-          }
-          return node;
-        }
 
-        const nodeData = json.content.length === 1 ? json.content[0] : mergeListItems(json)?.content?.[0]
+        const nodeData = json.content[0];
 
         return {
           ...nodeData,
@@ -326,6 +311,8 @@ export function useEditorStore() {
   const upsertEditorState = React.useCallback(
     (json: JSONContent) => {
       const { content = [] } = json;
+
+      console.log('upsertEditorState', content);
 
       const populatedContent = content.filter(node => {
         const isNonParagraph = node.type !== 'paragraph';
