@@ -153,6 +153,8 @@ export const InputPlace = ({
       relation: newRelation,
       spaceId,
     });
+
+    return newRelationId;
   };
 
   //Create/import logic
@@ -208,9 +210,52 @@ export const InputPlace = ({
       SystemIds.ADDRESS_ATTRIBUTE,
       'Address',
       addressEntityId,
-      result.place_name,
+      result.text,
       SystemIds.TYPES_ATTRIBUTE,
       'Types'
+    );
+
+    //Add source to Address entity
+    const newRelationSourceId = createRelation(
+      'XrRygNVtYLwG4S1YoiWW8c', // Mapbox attribute
+      'Mapbox',
+      addressEntityId,
+      result.text,
+      'A7NJF2WPh8VhmvbfVWiyLo', // Source attribute
+      'Sources'
+    );
+
+    //Add source db identifier to address
+    DB.upsert(
+      {
+        entityId: newRelationSourceId,
+        attributeId: 'CgLt3CoEzWmhPW3XGkakYa',
+        attributeName: 'Source database identifier',
+        entityName: '',
+        value: {
+          type: 'TEXT',
+          value: result.mapbox_id,
+        },
+      },
+      spaceId
+    );
+
+    //Add relations to properties sources (name/geo location)
+    createRelation(
+      SystemIds.NAME_ATTRIBUTE,
+      'Name',
+      newRelationSourceId,
+      '',
+      '49frzgU1girWK2NNzXHJWn',
+      'Properties Sourced'
+    );
+    createRelation(
+      SystemIds.GEO_LOCATION_PROPERTY,
+      'Geo Location',
+      newRelationSourceId,
+      '',
+      '49frzgU1girWK2NNzXHJWn',
+      'Properties Sourced'
     );
 
     //Create place entity
@@ -226,6 +271,49 @@ export const InputPlace = ({
         },
       },
       spaceId
+    );
+
+    //Add source to Place entity
+    const newRelationPlaceSourceId = createRelation(
+      'XrRygNVtYLwG4S1YoiWW8c', // Mapbox attribute
+      'Mapbox',
+      placeEntityId,
+      result.place_name,
+      'A7NJF2WPh8VhmvbfVWiyLo', // Source attribute
+      'Sources'
+    );
+
+    //Add source db identifier to place
+    DB.upsert(
+      {
+        entityId: newRelationPlaceSourceId,
+        attributeId: 'CgLt3CoEzWmhPW3XGkakYa',
+        attributeName: 'Source database identifier',
+        entityName: '',
+        value: {
+          type: 'TEXT',
+          value: result.mapbox_id,
+        },
+      },
+      spaceId
+    );
+
+    //Add relations to properties sources (name/address)
+    createRelation(
+      SystemIds.NAME_ATTRIBUTE,
+      'Name',
+      newRelationPlaceSourceId,
+      '',
+      '49frzgU1girWK2NNzXHJWn',
+      'Properties Sourced'
+    );
+    createRelation(
+      SystemIds.ADDRESS_ATTRIBUTE,
+      'Address',
+      newRelationPlaceSourceId,
+      '',
+      '49frzgU1girWK2NNzXHJWn',
+      'Properties Sourced'
     );
 
     //Add type place to place entity
