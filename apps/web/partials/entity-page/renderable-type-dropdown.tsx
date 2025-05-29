@@ -14,6 +14,7 @@ import { Date } from '~/design-system/icons/date';
 import { GeoLocation } from '~/design-system/icons/geo-location';
 import { Image } from '~/design-system/icons/image';
 import { Number } from '~/design-system/icons/number';
+import { Place } from '~/design-system/icons/place';
 import { Relation } from '~/design-system/icons/relation';
 import { Text } from '~/design-system/icons/text';
 import { Url } from '~/design-system/icons/url';
@@ -28,7 +29,7 @@ const icons: Record<SwitchableRenderableType, React.FunctionComponent<{ color?: 
   CHECKBOX: CheckboxChecked,
   NUMBER: Number,
   POINT: GeoLocation,
-  PLACE: GeoLocation,
+  PLACE: Place,
 };
 
 interface Props {
