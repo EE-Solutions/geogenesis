@@ -236,6 +236,7 @@ export function useQueryEntities({
 
       if (syncedEntitiesIds.length > 0 && latestQueriedEntitiesIds.length === 0) {
         setLocalEntities(event.entities);
+        return;
       }
 
       /**
