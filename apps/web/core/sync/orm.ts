@@ -11,6 +11,7 @@ import { SearchResult } from '../io/dto/search';
 import { EntityId } from '../io/schema';
 import { fetchEntity, fetchResults, fetchSpaces, fetchTableRowEntities } from '../io/subgraph';
 import { fetchEntitiesBatch } from '../io/subgraph/fetch-entities-batch';
+import { fetchTableRowEntitiesWithCount } from '../io/subgraph/fetch-table-row-entities-with-count';
 import { OmitStrict, Relation } from '../types';
 import { Entities } from '../utils/entity';
 import { Triples } from '../utils/triples';
@@ -243,6 +244,91 @@ export class E {
     });
 
     return entities.filter(e => e !== null);
+  }
+
+  static async findManyWithCount({
+    store,
+    cache,
+    where,
+    first,
+    skip,
+  }: {
+    store: GeoStore;
+    cache: QueryClient;
+    where: WhereCondition;
+    first: number;
+    skip: number;
+  }) {
+    const filters: Filter[] = [];
+
+    if (where.relations) {
+      const relationConditions = where.relations
+        .map((r): Filter | null => {
+          if (r.typeOf?.id?.equals && r.toEntity?.id?.equals) {
+            return {
+              columnId: r.typeOf.id.equals,
+              columnName: null,
+              value: r.toEntity.id.equals,
+              valueName: null,
+              valueType: 'RELATION',
+            };
+          }
+
+          return null;
+        })
+        .filter(f => f !== null);
+
+      filters.push(...relationConditions);
+    }
+
+    if (where.triples) {
+      const tripleConditions = where.triples
+        .map((t): Filter | null => {
+          if (t.attributeId?.equals && t.value?.equals) {
+            return {
+              columnId: t.attributeId.equals,
+              columnName: null,
+              value: t.value.equals.toString(),
+              valueName: null,
+              valueType: 'TEXT', // SUPPORT OTHER TYPES
+            };
+          }
+
+          return null;
+        })
+        .filter(f => f !== null);
+
+      filters.push(...tripleConditions);
+    }
+
+    if (where.spaces) {
+      const relationConditions = where.spaces
+        .map((s): Filter | null => {
+          if (s.equals) {
+            return {
+              columnId: SystemIds.SPACE_FILTER,
+              columnName: null,
+              value: s.equals,
+              valueName: null,
+              valueType: 'RELATION',
+            };
+          }
+
+          return null;
+        })
+        .filter(f => f !== null);
+
+      filters.push(...relationConditions);
+    }
+
+    const filterString = queryStringFromFilters(filters);
+
+    const remoteEntities = await cache.fetchQuery({
+      queryKey: ['network', 'entities', filters],
+      queryFn: ({ signal }) => fetchTableRowEntitiesWithCount({ filter: filterString, signal, first, skip }),
+    });
+
+    return remoteEntities;
   }
 
   static async findFuzzy({
