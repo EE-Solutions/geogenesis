@@ -30,6 +30,7 @@ import { TopRanked } from './icons/top-ranked';
 import { ResizableContainer } from './resizable-container';
 import { Truncate } from './truncate';
 import { showingIdsAtom } from '~/atoms';
+import { PLACE_TYPE } from '~/core/system-ids';
 
 type SearchPlaceEntityProps = {
   spaceId: string;
@@ -316,10 +317,8 @@ export const InputPlace = ({
       'Properties Sourced'
     );
 
-    //Add type place to place entity
-    //Hardcoded Place ID
-    const PLACE_ID = 'Fr887xssrH7RbK3S5gnLVb';
-    createRelation(PLACE_ID, 'Place', placeEntityId, result.place_name, SystemIds.TYPES_ATTRIBUTE, 'Types');
+    // TODO use system ID
+    createRelation(PLACE_TYPE, 'Place', placeEntityId, result.place_name, SystemIds.TYPES_ATTRIBUTE, 'Types');
 
     //Create relation in place entity with address entity
     createRelation(

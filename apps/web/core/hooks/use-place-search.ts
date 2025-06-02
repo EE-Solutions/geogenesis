@@ -14,6 +14,7 @@ import { SearchResult } from '../io/dto/search';
 import { E } from '../sync/orm';
 import { useSyncEngine } from '../sync/use-sync-engine';
 import { useDebouncedValue } from './use-debounced-value';
+import { PLACE_TYPE } from '../system-ids';
 
 export type Feature = {
   place_name: string;
@@ -39,8 +40,8 @@ export const usePlaceSearch = ({ filterByTypes }: SearchOptions = {}) => {
 
   const maybeEntityId = debouncedQuery.trim();
 
-  // Temporary hardcoded filterByTypes for test purposes
-  const mockFilterByTypes = ['Fr887xssrH7RbK3S5gnLVb'];
+  // TODO replace with a proper system ID import
+  const mockFilterByTypes = [PLACE_TYPE];
 
   const { data: resultsEntities, isLoading: isEntitiesLoading } = useQuery({
     enabled: debouncedQuery !== '',
@@ -162,6 +163,7 @@ export const usePlaceSearch = ({ filterByTypes }: SearchOptions = {}) => {
 
       const res = await fetch(`/api/places/search?query=${encodeURIComponent(query)}&sessionToken=${sessionToken}`);
       const data = await res.json();
+      console.log('Places search results:', data);
       setPlacesResults(data.suggestions || []);
       if (!data.suggestions.length) {
         setIsEmpty(true);

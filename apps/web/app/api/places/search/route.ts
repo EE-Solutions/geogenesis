@@ -19,13 +19,14 @@ export async function GET(request: Request) {
     );
 
     const data = await mapboxRes.json();
+    console.log('Mapbox search results:', data);
 
     const mapBoxData: Feature[] = data.suggestions.map(
-      (suggestion: { name: any; address: string; mapbox_id: string }) => {
+      (suggestion: { name: any; full_address: string; mapbox_id: string }) => {
         return {
           place_name: suggestion?.name,
           mapbox_id: suggestion?.mapbox_id,
-          text: suggestion?.address,
+          text: suggestion?.full_address,
         };
       }
     );
