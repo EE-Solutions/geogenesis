@@ -163,7 +163,6 @@ export const usePlaceSearch = ({ filterByTypes }: SearchOptions = {}) => {
 
       const res = await fetch(`/api/places/search?query=${encodeURIComponent(query)}&sessionToken=${sessionToken}`);
       const data = await res.json();
-      console.log('Places search results:', data);
       setPlacesResults(data.suggestions || []);
       if (!data.suggestions.length) {
         setIsEmpty(true);

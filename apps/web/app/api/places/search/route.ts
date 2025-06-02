@@ -19,7 +19,6 @@ export async function GET(request: Request) {
     );
 
     const data = await mapboxRes.json();
-    console.log('Mapbox search results:', data);
 
     const mapBoxData: Feature[] = data.suggestions.map(
       (suggestion: { name: any; full_address: string; mapbox_id: string }) => {
