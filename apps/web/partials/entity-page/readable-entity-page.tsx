@@ -14,6 +14,7 @@ import { Checkbox, getChecked } from '~/design-system/checkbox';
 import { LinkableRelationChip } from '~/design-system/chip';
 import { DateField } from '~/design-system/editable-fields/date-field';
 import { ImageZoom } from '~/design-system/editable-fields/editable-fields';
+import { GeoLocationPointFields } from '~/design-system/editable-fields/geo-location-field';
 import { WebUrlField } from '~/design-system/editable-fields/web-url-field';
 import { Map } from '~/design-system/map';
 import { PrefetchLink as Link } from '~/design-system/prefetch-link';
@@ -36,7 +37,7 @@ export function ReadableEntityPage({ triples: serverTriples, id, spaceId }: Prop
   return (
     <div className="flex flex-col gap-6 rounded-lg border border-grey-02 p-5 shadow-button">
       {Object.entries(renderables).map(([attributeId, renderable]) => {
-        const isRelation = renderable[0].type === 'RELATION' || renderable[0].type === 'IMAGE';
+        const isRelation = renderable[0].type === 'RELATION' || renderable[0].type === 'IMAGE' || renderable[0].type === 'PLACE';
 
         if (isRelation) {
           return <RelationsGroup key={attributeId} relations={renderable as RelationRenderableProperty[]} />;
@@ -207,22 +208,16 @@ export function RelationsGroup({ relations, isTypes }: { relations: RelationRend
               return <ImageZoom key={`image-${relationId}-${relationValue}`} imageSrc={imagePath} />;
             }
 
-            if (renderableType === 'RELATION' && r.attributeId === VENUE_PROPERTY && geoData.geoLocation) {
-              // Currently, when we create an entity with a venue property and renderable type = 'PLACE',
-              // the entity ends up with type = 'RELATION' after creation.
-              // To render the map properly on the entity page, it needs to be type = 'PLACE'.
-              const coordinates = GeoPoint.parseCoordinates(geoData.geoLocation);
-              return (
-                <div key={`string-${r.attributeId}-${geoData.geoLocation}`} className="flex w-full flex-col gap-2">
-                  <Text as="p">{relationName}</Text>
-                  <Text as="p">({geoData.geoLocation})</Text>
-                  <Map latitude={coordinates?.latitude} longitude={coordinates?.longitude} />
-                </div>
-              );
-            }
-
             return (
-              <div key={`relation-${relationId}-${relationValue}`} className="mt-1">
+              <div
+                key={`relation-${relationId}-${relationValue}`}
+                className={`mt-1 ${
+                  renderableType === 'PLACE' ||
+                  (renderableType === 'RELATION' && r.attributeId === VENUE_PROPERTY)
+                    ? 'w-full'
+                    : ''
+                }`}
+              >
                 <LinkableRelationChip
                   isEditing={false}
                   entityHref={NavUtils.toEntity(spaceId, relationValue ?? '')}
@@ -230,6 +225,23 @@ export function RelationsGroup({ relations, isTypes }: { relations: RelationRend
                 >
                   {relationName ?? relationValue}
                 </LinkableRelationChip>
+                {renderableType === 'PLACE' ||
+                // Currently, when we create an entity with a venue property and renderable type = 'PLACE',
+                // the entity ends up with type = 'RELATION' after creation.
+                // So temporary I'll add some checks to render it
+                (renderableType === 'RELATION' && r.attributeId === VENUE_PROPERTY) ? (
+                  <div className="flex w-full flex-col my-3">
+                    <GeoLocationPointFields
+                      key={relationId}
+                      variant="body"
+                      placeholder="Add value..."
+                      aria-label="text-field"
+                      value={geoData?.geoLocation}
+                      onChange={() => {}}
+                      hideInputs={true}
+                    />
+                  </div>
+                ) : null}
               </div>
             );
           })}

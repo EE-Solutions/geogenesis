@@ -9,13 +9,13 @@ export function useGeoCoordinates(entityId: string, spaceId: string) {
   const { relationsOut } = useEntity({ id: entityId as EntityId, spaceId });
 
   // Find the Venue relation
-  const venueRelation = relationsOut.find(t => t.typeOf.id === VENUE_PROPERTY); // TODO change to systemsIds (Venue)
+  const venueRelation = relationsOut.find(t => t.typeOf.id === EntityId(VENUE_PROPERTY)); // TODO change to systemsIds (Venue)
 
   // Fetch the Place entity
   const { relationsOut: placeRelations } = useEntity({ id: venueRelation?.toEntity.id as EntityId, spaceId });
 
   // Find address relation
-  const addressRelation = placeRelations.find(t => t.typeOf.id === ADDRESS_PROPERTY); // TODO change to systemsIds
+  const addressRelation = placeRelations.find(t => t.typeOf.id === EntityId(ADDRESS_PROPERTY)); // TODO change to systemsIds
 
   // Step 5: Fetch Address entity
   const address = useEntity({ id: addressRelation?.toEntity.id as EntityId, spaceId });

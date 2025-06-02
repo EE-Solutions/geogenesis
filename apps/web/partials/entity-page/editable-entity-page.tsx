@@ -50,6 +50,7 @@ import { getRenderableTypeSelectorOptions } from './get-renderable-type-options'
 import { NumberOptionsDropdown } from './number-options-dropdown';
 import { RenderableTypeDropdown } from './renderable-type-dropdown';
 import { editorHasContentAtom } from '~/atoms';
+import { VENUE_PROPERTY } from '~/core/system-ids';
 
 interface Props {
   triples: ITriple[];
@@ -680,7 +681,7 @@ export function RelationsGroup({ relations, properties }: RelationsGroupProps) {
               key={`relation-${relationId}-${relationValue}`}
               className={`mt-1 ${
                 renderableType === 'PLACE' ||
-                (renderableType === 'RELATION' && r.attributeId === 'Wx8o6Dahq5v3HhVSaLgwXn')
+                (renderableType === 'RELATION' && r.attributeId === VENUE_PROPERTY)
                   ? 'w-full'
                   : ''
               }`}
@@ -704,9 +705,8 @@ export function RelationsGroup({ relations, properties }: RelationsGroupProps) {
               // Currently, when we create an entity with a venue property and renderable type = 'PLACE',
               // the entity ends up with type = 'RELATION' after creation.
               // So temporary I'll add some checks to render it
-              (renderableType === 'RELATION' && r.attributeId === 'Wx8o6Dahq5v3HhVSaLgwXn') ? (
-                <div className="flex w-full flex-col">
-                  <span className="my-3 text-[19px] leading-[29px]">{geoData?.name}</span>
+              (renderableType === 'RELATION' && r.attributeId === VENUE_PROPERTY) ? (
+                <div className="flex w-full flex-col my-3">
                   <GeoLocationPointFields
                     key={relationId}
                     variant="body"
