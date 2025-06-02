@@ -9,7 +9,6 @@ import { PropertyId } from '~/core/hooks/use-properties';
 import { Cell, PropertySchema } from '~/core/types';
 import { NavUtils, getImagePath } from '~/core/utils/utils';
 
-import { Divider } from '~/design-system/divider';
 import { BlockImageField, PageStringField } from '~/design-system/editable-fields/editable-fields';
 import { SelectEntity } from '~/design-system/select-entity';
 
@@ -315,15 +314,15 @@ export function TableBlockGalleryItem({
               </>
             )}
           </div>
-
-          {otherPropertyData.map(p => {
-            return (
-              <>
-                <Divider type="horizontal" style="dashed" />
+          {!isPlaceholder &&
+            otherPropertyData.map(p => {
+              return (
                 <div key={p.slotId}>
                   <TableBlockPropertyField
                     key={p.slotId}
-                    renderables={p.renderables}
+                    renderables={
+                      nameCell?.space ? p.renderables.filter(r => r.spaceId === nameCell.space) : p.renderables
+                    }
                     spaceId={currentSpaceId}
                     entityId={rowEntityId}
                     properties={properties}
@@ -331,9 +330,8 @@ export function TableBlockGalleryItem({
                     source={source}
                   />
                 </div>
-              </>
-            );
-          })}
+              );
+            })}
         </div>
       </div>
     );
@@ -352,7 +350,7 @@ export function TableBlockGalleryItem({
           fill
         />
       </div>
-      <div className="flex w-full flex-col gap-4 px-1">
+      <div className="flex w-full flex-col px-1">
         <div className="flex flex-col gap-2">
           {source.type !== 'COLLECTION' ? (
             <Link href={href} className="text-smallTitle font-medium text-text">
@@ -378,7 +376,7 @@ export function TableBlockGalleryItem({
             </CollectionMetadata>
           )}
           {description && propertyDataHasDescription && (
-            <div className="line-clamp-4 text-metadata text-grey-04 md:line-clamp-3">{description}</div>
+            <div className="line-clamp-4 text-metadata text-text md:line-clamp-3">{description}</div>
           )}
         </div>
 
@@ -388,7 +386,11 @@ export function TableBlockGalleryItem({
             return (
               <TableBlockPropertyField
                 key={p.slotId}
-                renderables={p.renderables.filter(r => Boolean(r.placeholder) === false)}
+                renderables={
+                  nameCell?.space
+                    ? p.renderables.filter(r => Boolean(r.placeholder) === false && r.spaceId === nameCell.space)
+                    : p.renderables.filter(r => Boolean(r.placeholder) === false)
+                }
                 spaceId={currentSpaceId}
                 entityId={cellId}
                 onChangeEntry={onChangeEntry}

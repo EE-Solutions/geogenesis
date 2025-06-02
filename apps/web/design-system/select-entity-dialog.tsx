@@ -1,7 +1,9 @@
 import * as Popover from '@radix-ui/react-popover';
 
 import * as React from 'react';
+import { useState } from 'react';
 
+import { useKey } from '~/core/hooks/use-key';
 import { EntityId } from '~/core/io/schema';
 import type { RelationValueType } from '~/core/types';
 
@@ -22,12 +24,20 @@ export function SelectEntityAsPopover({
   spaceId,
   relationValueTypes,
 }: SelectEntityAsPopoverProps) {
+  const [open, setOpen] = useState<boolean>(false);
+
+  useKey('Escape', () => {
+    if (!open) return;
+
+    setOpen(false);
+  });
+
   return (
-    <Popover.Root>
+    <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>{trigger}</Popover.Trigger>
 
       <Popover.Portal>
-        <Popover.Content sideOffset={4} align="start">
+        <Popover.Content sideOffset={4} align="start" className="z-30">
           <SelectEntity
             key={JSON.stringify(relationValueTypes)}
             withSearchIcon={true}

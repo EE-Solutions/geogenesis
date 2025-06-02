@@ -18,6 +18,7 @@ module.exports = {
       'grey-02': '#DBDBDB',
       'grey-03': '#B6B6B6',
       'grey-04': '#606060',
+      link: '#8B8B8B',
       divider: '#F0F0F0',
       orange: '#FFA134',
       green: '#2ACE9D',
@@ -82,6 +83,12 @@ module.exports = {
         'pulse-strong': 'pulseStrong 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'slide-down': 'slideDown 300ms ease-in-out',
         'slide-up': 'slideUp 300ms ease-in-out',
+      },
+      backgroundImage: {
+        'cover-default': "url('/images/placeholders/Cover_Default.svg')",
+        'cover-hover': "url('/images/placeholders/Cover_Hover.svg')",
+        'avatar-default': "url('/images/placeholders/Avatar_Default.svg')",
+        'avatar-hover': "url('/images/placeholders/Avatar_Hover.svg')",
       },
       keyframes: {
         fadeIn: {
@@ -173,6 +180,14 @@ module.exports = {
           {
             lineHeight: '1.3125rem',
             fontWeight: '400',
+          },
+        ],
+        tableProperty: [
+          '1rem',
+          {
+            lineHeight: '1rem',
+            fontWeight: '400',
+            letterSpacing: '-0.25px',
           },
         ],
         textLink: [

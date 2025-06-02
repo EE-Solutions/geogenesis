@@ -5,6 +5,7 @@ import { Image } from '@graphprotocol/grc-20';
 import { generateJSON as generateServerJSON } from '@tiptap/html';
 import { JSONContent, generateJSON } from '@tiptap/react';
 import { useSearchParams } from 'next/navigation';
+import { useAtom } from 'jotai';
 
 import * as React from 'react';
 
@@ -27,6 +28,7 @@ import * as TextEntity from './text-entity';
 import { Content } from './types';
 import { RelationWithBlock, useBlocks } from './use-blocks';
 import { getNodeId } from './utils';
+import { editorHasContentAtom } from '~/atoms';
 
 interface MakeNewBlockArgs {
   addedBlock: { id: string; value: string };
@@ -55,15 +57,29 @@ function makeNewBlockRelation({
   const beforeBlockIndex = nextBlockIds[position - 1] as string | undefined;
   const afterBlockIndex = nextBlockIds[position + 1] as string | undefined;
 
+  // Create a unified array with consistent structure for both blockRelations and newBlocks
+  const allRelations = [
+    ...blockRelations.map(r => ({
+      toEntity: { id: r.block.id },
+      index: r.index
+    })),
+    ...newBlocks.map(b => ({
+      toEntity: { id: b.toEntity.id },
+      index: b.index
+    }))
+  ].sort((a, b) => a.index < b.index ? -1 : 1);
+
   // Check both the existing blocks and any that are created as part of this update
   // tick. This is necessary as right now we don't update the Geo state until the
   // user blurs the editor. See the comment earlier in this function.
+
   const beforeCollectionItemIndex =
-    blockRelations.find(c => c.block.id === beforeBlockIndex)?.index ??
-    newBlocks.find(c => c.id === beforeBlockIndex)?.index;
+    allRelations.find(c => c.toEntity.id === beforeBlockIndex)?.index;
+
+  // When the afterCollectionItemIndex is undefined, we need to use the next block of beforeBlockIndex
   const afterCollectionItemIndex =
-    blockRelations.find(c => c.block.id === afterBlockIndex)?.index ??
-    newBlocks.find(c => c.id === afterBlockIndex)?.index;
+    allRelations.find(c => c.toEntity.id === afterBlockIndex)?.index ??
+    allRelations[allRelations.findIndex(c => c.index === beforeCollectionItemIndex) + 1]?.index;
 
   const newTripleOrdering = R.reorder({
     relationId: newRelationId,
@@ -189,7 +205,6 @@ const makeBlocksRelations = async ({
       entityPageId,
     });
 
-    console.log('new relation', newRelation);
 
     DB.upsertRelation({ relation: newRelation, spaceId });
   }
@@ -208,6 +223,7 @@ export const useTabId = () => {
 
 export function useEditorStore() {
   const { id: entityId, spaceId, initialBlockRelations, initialBlocks, initialTabs } = useEditorInstance();
+  const [hasContent, setHasContent] = useAtom(editorHasContentAtom);
 
   const tabId = useTabId();
   const activeEntityId = tabId ?? entityId;
@@ -278,6 +294,8 @@ export function useEditorStore() {
         /* SSR on custom react nodes doesn't seem to work out of the box at the moment */
         const isSSR = typeof window === 'undefined';
         const json = isSSR ? generateServerJSON(html, tiptapExtensions) : generateJSON(html, tiptapExtensions);
+
+
         const nodeData = json.content[0];
 
         return {
@@ -473,5 +491,7 @@ export function useEditorStore() {
     editorJson,
     blockIds,
     blockRelations,
+    hasContent,
+    setHasContent,
   };
 }

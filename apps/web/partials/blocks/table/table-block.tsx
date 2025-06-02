@@ -26,7 +26,9 @@ import { SearchResult } from '~/core/io/dto/search';
 import { EntityId, SpaceId } from '~/core/io/schema';
 import { useEditable } from '~/core/state/editable-store';
 import { Cell, PropertySchema, Row } from '~/core/types';
+import { PagesPaginationPlaceholder } from '~/core/utils/utils';
 import { NavUtils } from '~/core/utils/utils';
+import { getPaginationPages } from '~/core/utils/utils';
 import { VALUE_TYPES } from '~/core/value-types';
 
 import { IconButton } from '~/design-system/button';
@@ -112,13 +114,30 @@ function useEntries(entries: Row[], properties: PropertySchema[], spaceId: strin
   const { source } = useSource();
   const { setEditable } = useEditable();
   const [hasPlaceholderRow, setHasPlaceholderRow] = React.useState(false);
+  const [pendingEntityId, setPendingEntityId] = React.useState<string | null>(null);
 
   const { nextEntityId, onClick: createEntityWithTypes } = useCreateEntityWithFilters(spaceId);
 
-  const renderedEntries =
-    hasPlaceholderRow && isEditing && !entries.find(e => e.entityId === nextEntityId)
-      ? [makePlaceholderRow(nextEntityId, spaceId, properties), ...entries]
-      : entries;
+  // Clear pending ID once it appears in entries
+  React.useEffect(() => {
+    if (pendingEntityId && entries.find(e => e.entityId === pendingEntityId)) {
+      setPendingEntityId(null);
+    }
+  }, [entries, pendingEntityId]);
+
+  // Show the placeholder row if we're editing and either:
+  // 1. We have hasPlaceholderRow set and no entry exists with nextEntityId
+  // 2. We have a pendingEntityId that hasn't appeared in entries yet
+  const shouldShowPlaceholder =
+    isEditing &&
+    ((hasPlaceholderRow && !entries.find(e => e.entityId === nextEntityId)) ||
+      (pendingEntityId && !entries.find(e => e.entityId === pendingEntityId)));
+
+  const placeholderEntityId = pendingEntityId || nextEntityId;
+
+  const renderedEntries = shouldShowPlaceholder
+    ? [makePlaceholderRow(placeholderEntityId, spaceId, properties), ...entries]
+    : entries;
 
   const onChangeEntry: onChangeEntryFn = (context, event) => {
     if (event.type === 'EVENT') {
@@ -188,11 +207,14 @@ function useEntries(entries: Row[], properties: PropertySchema[], spaceId: strin
               verified: true,
             });
           }
+
+          // Mark this ID as pending to keep the placeholder visible
+          setPendingEntityId(to.id);
         }
       }
     }
 
-    if (context.entityId === nextEntityId) {
+    if (context.entityId === nextEntityId || context.entityId === pendingEntityId) {
       setHasPlaceholderRow(false);
 
       /**
@@ -205,6 +227,9 @@ function useEntries(entries: Row[], properties: PropertySchema[], spaceId: strin
        */
       if (event.type !== 'Find') {
         const maybeName = event.type === 'Create' ? event.data.name : undefined;
+
+        // Mark this ID as pending before creating
+        setPendingEntityId(context.entityId);
 
         createEntityWithTypes({
           name: maybeName,
@@ -264,8 +289,17 @@ export const TableBlock = ({ spaceId }: Props) => {
   const isEditing = useUserIsEditing(spaceId);
   const canEdit = useCanUserEdit(spaceId);
   const { spaces } = useSpaces();
-  const { properties, rows, setPage, isLoading, hasNextPage, hasPreviousPage, pageNumber, propertiesSchema } =
-    useDataBlock();
+  const {
+    properties,
+    rows,
+    setPage,
+    isLoading,
+    hasNextPage,
+    hasPreviousPage,
+    pageNumber,
+    propertiesSchema,
+    totalPages,
+  } = useDataBlock();
   const { filterState, setFilterState } = useFilters();
   const { view, placeholder, shownColumnIds } = useView();
   const { source } = useSource();
@@ -293,7 +327,7 @@ export const TableBlock = ({ spaceId }: Props) => {
     return f;
   });
 
-  const hasPagination = hasPreviousPage || hasNextPage;
+  const hasPagination = hasPreviousPage || hasNextPage || totalPages > 1;
 
   let EntriesComponent = (
     <TableBlockTable
@@ -309,9 +343,9 @@ export const TableBlock = ({ spaceId }: Props) => {
     />
   );
 
-  if (view === 'LIST') {
+  if (view === 'LIST' && entries.length > 0) {
     EntriesComponent = (
-      <div className="flex w-full flex-col space-y-4">
+      <div className={cx('flex w-full flex-col', isEditing ? 'gap-10' : 'gap-4')}>
         {entries.map((row, index: number) => {
           return (
             <TableBlockListItem
@@ -333,7 +367,7 @@ export const TableBlock = ({ spaceId }: Props) => {
     );
   }
 
-  if (view === 'BULLETED_LIST') {
+  if (view === 'BULLETED_LIST' && entries.length > 0) {
     EntriesComponent = (
       <div className="flex w-full flex-col">
         {entries.map((row, index: number) => {
@@ -357,7 +391,7 @@ export const TableBlock = ({ spaceId }: Props) => {
     );
   }
 
-  if (view === 'GALLERY') {
+  if (view === 'GALLERY' && entries.length > 0) {
     EntriesComponent = (
       <div className="grid grid-cols-3 gap-x-4 gap-y-10 sm:grid-cols-2">
         {entries.map((row, index: number) => {
@@ -467,19 +501,31 @@ export const TableBlock = ({ spaceId }: Props) => {
           <>
             <Spacer height={12} />
             <PageNumberContainer>
-              {pageNumber > 1 && (
+              {source.type === 'COLLECTION' ? getPaginationPages(totalPages, pageNumber + 1).map((page, index) => {
+                return page === PagesPaginationPlaceholder.skip ? (
+                  <Text key={`ellipsis-${index}`} color="grey-03" className="flex justify-center" variant="metadataMedium">
+                    ...
+                  </Text>
+                ) : (
+                  <PageNumber key={`page-${page}`} number={page} onClick={() => setPage(page - 1)} isActive={page === pageNumber + 1} />
+                );
+              }) : (
                 <>
-                  <PageNumber number={1} onClick={() => setPage(0)} />
-                  {pageNumber > 2 ? (
-                    <Text color="grey-03" variant="metadataMedium">
-                      ...
-                    </Text>
-                  ) : null}
+                  {pageNumber > 1 && (
+                    <>
+                      <PageNumber number={1} onClick={() => setPage(0)} />
+                      {pageNumber > 2 ? (
+                        <Text color="grey-03" variant="metadataMedium">
+                          ...
+                        </Text>
+                      ) : null}
+                    </>
+                  )}
+                  {hasPreviousPage && <PageNumber number={pageNumber} onClick={() => setPage('previous')} />}
+                  <PageNumber isActive number={pageNumber + 1} />
+                  {hasNextPage && <PageNumber number={pageNumber + 2} onClick={() => setPage('next')} />}
                 </>
               )}
-              {hasPreviousPage && <PageNumber number={pageNumber} onClick={() => setPage('previous')} />}
-              <PageNumber isActive number={pageNumber + 1} />
-              {hasNextPage && <PageNumber number={pageNumber + 2} onClick={() => setPage('next')} />}
               <Spacer width={8} />
               <PreviousButton isDisabled={!hasPreviousPage} onClick={() => setPage('previous')} />
               <NextButton isDisabled={!hasNextPage} onClick={() => setPage('next')} />
