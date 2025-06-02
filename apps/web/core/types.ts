@@ -1,6 +1,7 @@
 import { SystemIds, TripleValueOptions } from '@graphprotocol/grc-20';
 
 import { EntityId } from './io/schema';
+import { PLACE_TYPE } from './system-ids';
 
 export type Dictionary<K extends string, T> = Partial<Record<K, T>>;
 export type OmitStrict<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
@@ -164,6 +165,7 @@ export type ValueTypeId =
   | typeof SystemIds.CHECKBOX
   | typeof SystemIds.NUMBER
   | typeof SystemIds.IMAGE
+  | typeof PLACE_TYPE
   | typeof SystemIds.POINT;
 
 export type GeoType = {
