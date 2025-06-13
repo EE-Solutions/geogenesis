@@ -156,35 +156,37 @@ export function BlockImageField({ imageSrc, onImageChange, onImageRemove, varian
   const placeholderImage = blockImagePlaceholderImgs[variant]?.[hovered ? 'hover' : 'default'] ?? undefined;
 
   return (
-    <button
-      onClick={handleFileInputClick}
-      className={cx('flex h-full w-full place-items-center items-center', {
-        'cursor-pointer': !imageSrc,
-      })}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {imageSrc ? (
-        <div className="pt-1">
-          <ImageZoom variant={variant} imageSrc={imageSrc} />
+    <>
+      <button
+        onClick={handleFileInputClick}
+        className={cx('flex h-full w-full place-items-center items-center', {
+          'cursor-pointer': !imageSrc,
+        })}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        {imageSrc ? (
+          <div className="pt-1">
+            <ImageZoom variant={variant} imageSrc={imageSrc} />
+          </div>
+        ) : null}
+
+        <div className="absolute h-full w-full">
+          <img src={placeholderImage} className="h-full w-full overflow-visible object-cover" />
         </div>
-      ) : null}
 
-      <div className="absolute h-full w-full">
-        <img src={placeholderImage} className="h-full w-full overflow-visible object-cover" />
-      </div>
+        <div className="z-10 flex h-full w-full items-center justify-center">
+          {isUploading ? (
+            <Dots />
+          ) : (
+            <label htmlFor="avatar-file" className="cursor-pointer">
+              <Upload color={hovered ? 'grey-04' : 'grey-03'} />
+            </label>
+          )}
+          {imageSrc && <SquareButton onClick={onImageRemove} icon={<Trash color={hovered ? 'grey-04' : 'grey-03'} />} />}
+        </div>
 
-      <div className="z-10 flex h-full w-full items-center justify-center">
-        {isUploading ? (
-          <Dots />
-        ) : (
-          <label htmlFor="avatar-file" className="cursor-pointer">
-            <Upload color={hovered ? 'grey-04' : 'grey-03'} />
-          </label>
-        )}
-        {imageSrc && <SquareButton onClick={onImageRemove} icon={<Trash color={hovered ? 'grey-04' : 'grey-03'} />} />}
-      </div>
-
+      </button>
       <input
         ref={fileInputRef}
         accept="image/png, image/jpeg"
@@ -193,7 +195,7 @@ export function BlockImageField({ imageSrc, onImageChange, onImageRemove, varian
         type="file"
         className="hidden"
       />
-    </button>
+    </>
   );
 }
 
