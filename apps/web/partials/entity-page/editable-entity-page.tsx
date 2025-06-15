@@ -49,6 +49,7 @@ import { getRenderableTypeSelectorOptions } from './get-renderable-type-options'
 import { NumberOptionsDropdown } from './number-options-dropdown';
 import { RenderableTypeDropdown } from './renderable-type-dropdown';
 import { editorHasContentAtom } from '~/atoms';
+import { ReorderableRelationChipsDnd } from '~/design-system/reorderable-relation-chips-dnd';
 
 interface Props {
   triples: ITriple[];
@@ -359,7 +360,21 @@ export function RelationsGroup({ relations, properties }: RelationsGroupProps) {
       {/* Render non-placeholder relation chips */}
       {nonPlaceholderRelations.length > 0 && (
         typeOfName !== 'Types' ? (
-          <ReorderableRelationChips
+          // <ReorderableRelationChips
+          //   relations={nonPlaceholderRelations}
+          //   attributeId={typeOfId}
+          //   attributeName={typeOfName}
+          //   spaceId={spaceId}
+          //   onDeleteRelation={r => {
+          //     send({
+          //       type: 'DELETE_RELATION',
+          //       payload: {
+          //         renderable: r,
+          //       },
+          //     });
+          //   }}
+          // />
+          <ReorderableRelationChipsDnd
             relations={nonPlaceholderRelations}
             attributeId={typeOfId}
             attributeName={typeOfName}
@@ -373,6 +388,7 @@ export function RelationsGroup({ relations, properties }: RelationsGroupProps) {
               });
             }}
           />
+
         ) : (
           // Types relations are not reorderable
           nonPlaceholderRelations.map(r => (
