@@ -127,8 +127,8 @@ function TriplesGroup({
                       );
                     } else {
                       return (
-                        <div className="flex w-full flex-col gap-2">
-                          <Text key={`string-${renderable.attributeId}-${renderable.value}`} as="p">
+                        <div key={`string-${renderable.attributeId}-${renderable.value}`} className="flex w-full flex-col gap-2">
+                          <Text as="p">
                             ({renderable.value})
                           </Text>
                         </div>
@@ -138,6 +138,7 @@ function TriplesGroup({
                   case 'NUMBER':
                     return (
                       <ReadableNumberField
+                        key={`number-${renderable.attributeId}-${renderable.value}`}
                         value={renderable.value}
                         format={renderable.options?.format}
                         unitId={renderable.options?.unit}
