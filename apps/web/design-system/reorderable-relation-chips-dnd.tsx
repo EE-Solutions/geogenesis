@@ -20,8 +20,6 @@ import {
 } from '@dnd-kit/sortable';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowUpDown } from 'lucide-react';
 
 import { RelationRenderableProperty } from '~/core/types';
 import { NavUtils } from '~/core/utils/utils';
