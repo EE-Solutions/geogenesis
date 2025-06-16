@@ -21,8 +21,7 @@ const debounce = <T extends (...args: any[]) => any>(fn: T, delay: number) => {
 
   return (...args: Parameters<T>) => {
     if (timer) clearTimeout(timer);
-    // @ts-expect-error incorrect type
-    timer = setTimeout(() => fn(...args), delay);
+    timer = window.setTimeout(() => fn(...args), delay);
   };
 };
 
@@ -45,19 +44,31 @@ export function useOptimisticValueWithSideEffect<T>({
   initialValue: T;
 }) {
   const [value, setValue] = React.useState(initialValue);
+  const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
 
   const debouncedCallback = debounce((value: T) => {
     callback(value);
   }, delay);
 
   const onChange = (newValue: T) => {
+    // Store cursor position before update
+    const input = inputRef.current;
+    const cursorPosition = input?.selectionStart ?? 0;
+    
     setValue(newValue);
     debouncedCallback(newValue);
+
+    // Restore cursor position after update
+    requestAnimationFrame(() => {
+      if (input) {
+        input.setSelectionRange(cursorPosition, cursorPosition);
+      }
+    });
   };
 
   React.useEffect(() => {
     setValue(initialValue);
   }, [initialValue]);
 
-  return { value, onChange };
+  return { value, onChange, inputRef };
 }

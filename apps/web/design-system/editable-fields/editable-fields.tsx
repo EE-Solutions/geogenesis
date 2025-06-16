@@ -66,7 +66,7 @@ type PageStringFieldProps = {
 };
 
 export function PageStringField({ ...props }: PageStringFieldProps) {
-  const { value: localValue, onChange: setLocalValue } = useOptimisticValueWithSideEffect({
+  const { value: localValue, onChange: setLocalValue, inputRef } = useOptimisticValueWithSideEffect({
     callback: props.onChange,
     delay: 1000,
     initialValue: props.value || '',
@@ -75,6 +75,7 @@ export function PageStringField({ ...props }: PageStringFieldProps) {
   return (
     <Textarea
       {...props}
+      ref={inputRef}
       value={localValue}
       onChange={e => setLocalValue(e.currentTarget.value)}
       className={textareaStyles({ variant: props.variant })}
