@@ -881,10 +881,10 @@ function TriplesGroup({ triples }: TriplesGroupProps) {
 
           case 'POINT': {
             return (
-              <>
+              <React.Fragment key={`point-${renderable.attributeId}`}>
                 {renderable.attributeId === SystemIds.GEO_LOCATION_PROPERTY && renderable.type === 'POINT' ? (
                   <GeoLocationPointFields
-                    key={renderable.attributeId}
+                    key={`geo-${renderable.attributeId}`}
                     variant="body"
                     placeholder="Add value..."
                     aria-label="text-field"
@@ -904,7 +904,7 @@ function TriplesGroup({ triples }: TriplesGroupProps) {
                   />
                 ) : (
                   <PageStringField
-                    key={renderable.attributeId}
+                    key={`point-field-${renderable.attributeId}`}
                     variant="body"
                     placeholder="Add value..."
                     aria-label="text-field"
@@ -923,7 +923,7 @@ function TriplesGroup({ triples }: TriplesGroupProps) {
                     }}
                   />
                 )}
-              </>
+              </React.Fragment>
             );
           }
         }
