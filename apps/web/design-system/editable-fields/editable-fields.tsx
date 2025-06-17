@@ -180,13 +180,12 @@ export function BlockImageField({ imageSrc, onImageChange, onImageRemove, varian
           {isUploading ? (
             <Dots />
           ) : (
-            <label htmlFor="avatar-file" className="cursor-pointer">
-              <Upload color={hovered ? 'grey-04' : 'grey-03'} />
-            </label>
+              <label htmlFor="avatar-file" className="cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                <Upload color={hovered ? 'grey-04' : 'grey-03'} />
+              </label>
           )}
           {imageSrc && <SquareButton onClick={onImageRemove} icon={<Trash color={hovered ? 'grey-04' : 'grey-03'} />} />}
         </div>
-
       </button>
       <input
         ref={fileInputRef}
