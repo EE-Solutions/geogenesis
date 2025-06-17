@@ -193,7 +193,7 @@ export function TableBlockListItem({
                   if (fromCreateFn) {
                     // We bail out in the case that we're receiving the onDone
                     // callback from within the create entity function internal
-                    // to SelectEntity.
+                    // to SelectEntity.                    
                     return;
                   }
 
@@ -372,9 +372,9 @@ export function TableBlockListItem({
       </div>
       <div className="w-full">
         {source.type !== 'COLLECTION' ? (
-          <Link href={href} className="text-smallTitle font-medium text-text">
+          <span className="text-smallTitle font-medium text-text">
             {name || rowEntityId}
-          </Link>
+          </span>
         ) : (
           <CollectionMetadata
             view="LIST"
@@ -387,9 +387,9 @@ export function TableBlockListItem({
             verified={verified}
             onLinkEntry={onLinkEntry}
           >
-            <Link href={href} className="text-smallTitle font-medium text-text">
+            <span className="text-smallTitle font-medium text-text">
               {name || rowEntityId}
-            </Link>
+            </span>
           </CollectionMetadata>
         )}
         {description && <div className="line-clamp-4 text-metadata text-text md:line-clamp-3">{description}</div>}
