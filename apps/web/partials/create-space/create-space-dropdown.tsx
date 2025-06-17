@@ -28,6 +28,7 @@ export function CreateSpaceDropdown() {
     <Menu
       open={isMenuOpen}
       onOpenChange={setIsMenuOpen}
+      asChild
       trigger={
         <button className="rounded-full p-2 text-grey-04 transition-colors duration-200 hover:bg-grey-01 focus:bg-grey-01 active:bg-divider sm:hidden">
           <Create />
