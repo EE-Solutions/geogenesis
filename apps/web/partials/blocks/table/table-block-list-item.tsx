@@ -4,12 +4,14 @@ import Link from 'next/link';
 
 import { Source } from '~/core/blocks/data/source';
 import { PLACEHOLDER_SPACE_IMAGE } from '~/core/constants';
+import { useEntity } from '~/core/database/entities';
 import { editEvent } from '~/core/events/edit-events';
 import { PropertyId } from '~/core/hooks/use-properties';
+import { EntityId } from '~/core/io/schema';
 import { Cell, PropertySchema } from '~/core/types';
 import { NavUtils, getImagePath } from '~/core/utils/utils';
 
-import { BlockImageField, PageStringField } from '~/design-system/editable-fields/editable-fields';
+import { BlockImageField, ImageZoom, PageStringField } from '~/design-system/editable-fields/editable-fields';
 import { SelectEntity } from '~/design-system/select-entity';
 
 import type { onChangeEntryFn, onLinkEntryFn } from '~/partials/blocks/table/change-entry';
@@ -50,6 +52,12 @@ export function TableBlockListItem({
   const { cellId, verified } = nameCell;
   let { description, image } = nameCell;
 
+  // Get the relations out of the entity so we can delete the avatar relation
+  const { relationsOut } = useEntity({
+    spaceId: currentSpaceId,
+    id: EntityId(cellId),
+  });
+
   const name = getName(nameCell, currentSpaceId);
 
   const maybeDescriptionInSpace = maybeDescriptionData?.renderables.find(
@@ -80,94 +88,132 @@ export function TableBlockListItem({
       c.slotId !== SystemIds.DESCRIPTION_ATTRIBUTE
   );
 
+  const onImageChange = (imageSrc: string) => {
+    const { id: imageId, ops } = Image.make({ cid: imageSrc });
+    const [createRelationOp, setTripleOp] = ops;
+
+    if (createRelationOp.type === 'CREATE_RELATION') {
+      const imageEntityDispatch = editEvent({
+        context: {
+          entityId: createRelationOp.relation.fromEntity,
+          entityName: null,
+          spaceId: currentSpaceId,
+        },
+      });
+
+      imageEntityDispatch({
+        type: 'UPSERT_RELATION',
+        payload: {
+          fromEntityId: createRelationOp.relation.fromEntity,
+          fromEntityName: name,
+          toEntityId: createRelationOp.relation.toEntity,
+          toEntityName: null,
+          typeOfId: createRelationOp.relation.type,
+          typeOfName: 'Types',
+        },
+      });
+
+      if (setTripleOp.type === 'SET_TRIPLE') {
+        imageEntityDispatch({
+          type: 'UPSERT_RENDERABLE_TRIPLE_VALUE',
+          payload: {
+            renderable: {
+              attributeId: setTripleOp.triple.attribute,
+              entityId: imageId,
+              spaceId: currentSpaceId,
+              attributeName: 'Image URL',
+              entityName: null,
+              type: 'URL',
+              value: setTripleOp.triple.value.value,
+            },
+            value: {
+              type: 'URL',
+              value: setTripleOp.triple.value.value,
+            },
+          },
+        });
+
+        onChangeEntry(
+          {
+            entityId: rowEntityId,
+            entityName: name,
+            spaceId: currentSpaceId,
+          },
+          {
+            type: 'EVENT',
+            data: {
+              type: 'UPSERT_RELATION',
+              payload: {
+                fromEntityId: rowEntityId,
+                fromEntityName: name,
+                toEntityId: imageId,
+                toEntityName: null,
+                typeOfId: ContentIds.AVATAR_ATTRIBUTE,
+                typeOfName: 'Avatar',
+                renderableType: 'IMAGE',
+                value: setTripleOp.triple.value.value,
+              },
+            },
+          }
+        );
+      }
+    }
+  };
+
+  const deleteProperty = () => {
+    const avatarRelation = relationsOut.find(r => r?.typeOf.id === EntityId(ContentIds.AVATAR_ATTRIBUTE));
+
+    if (avatarRelation) {
+      editEvent({
+        context: {
+          entityId: avatarRelation.fromEntity.id,
+          entityName: null,
+          spaceId: currentSpaceId,
+        },
+      })({
+        type: 'DELETE_RENDERABLE',
+        payload: {
+          renderable: {
+            attributeId: ContentIds.AVATAR_ATTRIBUTE,
+            entityId: avatarRelation.fromEntity.id,
+            spaceId: currentSpaceId,
+            attributeName: 'Avatar',
+            entityName: name,
+            type: 'IMAGE',
+            value: avatarRelation.toEntity.value,
+            relationId: avatarRelation.id,
+            valueName: avatarRelation.toEntity.name,
+          },
+        },
+      });
+    }
+  };
+
   if (isEditing && source.type !== 'RELATIONS') {
     return (
       <div className="group flex w-full max-w-full items-start justify-start gap-6 p-1 pr-5">
         <div className="relative flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-clip rounded-[0.625rem] bg-grey-01">
-          {image ? (
-            <NextImage
-              src={image ? getImagePath(image) : PLACEHOLDER_SPACE_IMAGE}
-              className="object-cover transition-transform duration-150 ease-in-out group-hover:scale-105"
-              alt=""
-              fill
-            />
-          ) : (
-            <BlockImageField
-              variant="avatar"
-              imageSrc={image ?? undefined}
-              onImageChange={imageSrc => {
-                const { id: imageId, ops } = Image.make({ cid: imageSrc });
-                const [createRelationOp, setTripleOp] = ops;
-
-                if (createRelationOp.type === 'CREATE_RELATION') {
-                  const imageEntityDispatch = editEvent({
-                    context: {
-                      entityId: createRelationOp.relation.fromEntity,
-                      entityName: null,
-                      spaceId: currentSpaceId,
-                    },
-                  });
-
-                  imageEntityDispatch({
-                    type: 'UPSERT_RELATION',
-                    payload: {
-                      fromEntityId: createRelationOp.relation.fromEntity,
-                      fromEntityName: name,
-                      toEntityId: createRelationOp.relation.toEntity,
-                      toEntityName: null,
-                      typeOfId: createRelationOp.relation.type,
-                      typeOfName: 'Types',
-                    },
-                  });
-
-                  if (setTripleOp.type === 'SET_TRIPLE') {
-                    imageEntityDispatch({
-                      type: 'UPSERT_RENDERABLE_TRIPLE_VALUE',
-                      payload: {
-                        renderable: {
-                          attributeId: setTripleOp.triple.attribute,
-                          entityId: imageId,
-                          spaceId: currentSpaceId,
-                          attributeName: 'Image URL',
-                          entityName: null,
-                          type: 'URL',
-                          value: setTripleOp.triple.value.value,
-                        },
-                        value: {
-                          type: 'URL',
-                          value: setTripleOp.triple.value.value,
-                        },
-                      },
-                    });
-
-                    onChangeEntry(
-                      {
-                        entityId: rowEntityId,
-                        entityName: name,
-                        spaceId: currentSpaceId,
-                      },
-                      {
-                        type: 'EVENT',
-                        data: {
-                          type: 'UPSERT_RELATION',
-                          payload: {
-                            fromEntityId: rowEntityId,
-                            fromEntityName: name,
-                            toEntityId: imageId,
-                            toEntityName: null,
-                            typeOfId: ContentIds.AVATAR_ATTRIBUTE,
-                            typeOfName: 'Avatar',
-                            renderableType: 'IMAGE',
-                            value: setTripleOp.triple.value.value,
-                          },
-                        },
-                      }
-                    );
-                  }
-                }
-              }}
-            />
-          )}
+          {/* {image ? (
+            <div className="relative h-16 w-16 flex-shrink-0 overflow-clip rounded-lg bg-grey-01">
+              <NextImage
+                src={image ? getImagePath(image) : PLACEHOLDER_SPACE_IMAGE}
+                className="object-cover transition-transform duration-150 ease-in-out group-hover:scale-105"
+                alt=""
+                fill
+              />
+              <div className="absolute bottom-0 right-0">
+                <div className="flex h-4 w-4 items-center justify-center rounded-full bg-grey-01">
+                  <div className="h-2 w-2 rounded-full bg-grey-01" />
+                </div>
+              </div>
+            </div>
+          ) : ( */}
+          <BlockImageField
+            variant="list-item"
+            imageSrc={image ?? undefined}
+            onImageChange={onImageChange}
+            onImageRemove={deleteProperty}
+          />
         </div>
         <div className="w-full space-y-3">
           <div>
@@ -363,12 +409,9 @@ export function TableBlockListItem({
       className="group flex w-full max-w-full grow items-start justify-start gap-6 rounded-[17px] p-1 pr-5 transition duration-200 hover:bg-divider"
     >
       <div className="relative h-16 w-16 flex-shrink-0 overflow-clip rounded-lg bg-grey-01">
-        <NextImage
-          src={image ? getImagePath(image) : PLACEHOLDER_SPACE_IMAGE}
-          className="object-cover transition-transform duration-150 ease-in-out group-hover:scale-105"
-          alt=""
-          fill
-        />
+        <div onClick={(e) => { e.stopPropagation(); e.preventDefault() }}>
+          <ImageZoom variant='list-item' imageSrc={image ? getImagePath(image) : PLACEHOLDER_SPACE_IMAGE} />
+        </div>
       </div>
       <div className="w-full">
         {source.type !== 'COLLECTION' ? (

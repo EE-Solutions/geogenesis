@@ -83,7 +83,7 @@ export function PageStringField({ ...props }: PageStringFieldProps) {
   );
 }
 
-type ImageVariant = 'avatar' | 'banner' | 'table-cell' | 'default' | 'gallery';
+type ImageVariant = 'avatar' | 'banner' | 'table-cell' | 'default' | 'gallery' | 'list-item';
 
 interface ImageZoomProps {
   imageSrc: string;
@@ -108,6 +108,10 @@ const imageStyles: Record<ImageVariant, React.CSSProperties> = {
   gallery: {
     height: 80,
   },
+  'list-item': {
+    height: 64,
+    width: 64,
+  },
 };
 
 export function ImageZoom({ imageSrc, variant = 'default' }: ImageZoomProps) {
@@ -129,9 +133,13 @@ const blockImagePlaceholderImgs: Record<string, Record<'default' | 'hover', stri
     default: '/images/placeholders/Gallery_Default.svg',
     hover: '/images/placeholders/Gallery_Hover.svg',
   },
+  'list-item': {
+    default: '/images/placeholders/Avatar_Default.svg',
+    hover: '/images/placeholders/Avatar_Hover.svg',
+  },
 };
 
-export function BlockImageField({ imageSrc, onImageChange, onImageRemove, variant = 'avatar' }: ImageFieldProps) {
+export function BlockImageField({ imageSrc, onImageRemove, onImageChange, variant = 'avatar' }: ImageFieldProps) {
   const [isUploading, setIsUploading] = React.useState(false);
   const { ipfs } = Services.useServices();
   const [hovered, setHovered] = React.useState(false);
@@ -146,11 +154,21 @@ export function BlockImageField({ imageSrc, onImageChange, onImageRemove, varian
 
   const handleChange = async (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setIsUploading(true);
       const file = e.target.files[0];
-      const imageSrc = await ipfs.uploadFile(file);
-      onImageChange(imageSrc);
-      setIsUploading(false);
+      setIsUploading(true);
+      try {
+
+        const imageSrcUploaded = await ipfs.uploadFile(file);
+        if (imageSrc ) {
+          onImageRemove?.();
+        }
+        onImageChange(imageSrcUploaded);
+      } catch (error) {
+        console.error('Failed to upload image:', error);
+      } finally {
+        setIsUploading(false);
+        e.target.value = '';
+      }
     }
   };
 
@@ -158,35 +176,43 @@ export function BlockImageField({ imageSrc, onImageChange, onImageRemove, varian
 
   return (
     <>
-      <button
-        onClick={handleFileInputClick}
-        className={cx('flex h-full w-full place-items-center items-center', {
-          'cursor-pointer': !imageSrc,
-        })}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
-        {imageSrc ? (
-          <div className="pt-1">
+      {imageSrc ? (
+        <div className="relative" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+          <div className="object-cover transition-transform duration-150 ease-in-out group-hover:scale-105">
             <ImageZoom variant={variant} imageSrc={imageSrc} />
           </div>
-        ) : null}
-
-        <div className="absolute h-full w-full">
-          <img src={placeholderImage} className="h-full w-full overflow-visible object-cover" />
+          <div className="absolute top-0 z-10 flex h-full w-full items-center justify-center gap-1.5">
+            {hovered ? (
+              <>
+                <SquareButton onClick={handleFileInputClick} icon={<Upload color={hovered ? 'grey-04' : 'grey-03'} />} />
+                <SquareButton onClick={onImageRemove} icon={<Trash color={hovered ? 'grey-04' : 'grey-03'} />} />
+              </>
+            ) : null}
+          </div>
         </div>
-
-        <div className="z-10 flex h-full w-full items-center justify-center">
-          {isUploading ? (
-            <Dots />
-          ) : (
+      ) : (
+        <button
+          onClick={handleFileInputClick}
+          className={cx('flex h-full w-full place-items-center items-center', {
+            'cursor-pointer': !imageSrc,
+          })}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+        >
+          <div className="absolute h-full w-full">
+            <img src={placeholderImage} className="h-full w-full overflow-visible object-cover" />
+          </div>
+          <div className="absolute z-10 flex h-full w-full items-center justify-center gap-1.5">
+            {isUploading ? (
+              <Dots />
+            ) : (
               <label htmlFor="avatar-file" className="cursor-pointer" onClick={(e) => e.stopPropagation()}>
                 <Upload color={hovered ? 'grey-04' : 'grey-03'} />
               </label>
-          )}
-          {imageSrc && <SquareButton onClick={onImageRemove} icon={<Trash color={hovered ? 'grey-04' : 'grey-03'} />} />}
-        </div>
-      </button>
+            )}
+          </div>
+        </button>
+      )}
       <input
         ref={fileInputRef}
         accept="image/png, image/jpeg"
