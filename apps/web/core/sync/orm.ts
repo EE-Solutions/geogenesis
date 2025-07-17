@@ -5,7 +5,7 @@ import { dedupeWith } from 'effect/Array';
 import { convertWhereConditionToEntityFilter } from '~/core/io/v2/converters';
 
 import { readTypes } from '../database/entities';
-import { getAllEntities, getBatchEntities, getEntity, getRelation, getResults, getSpaces } from '../io/v2/queries';
+import { getAllEntities, getBatchEntities, getEntity, getResults, getSpaces } from '../io/v2/queries';
 import { OmitStrict } from '../types';
 import { Entities } from '../utils/entity';
 import { Values } from '../utils/value';
@@ -113,23 +113,6 @@ export class E {
     });
 
     return this.merge({ id, store, spaceId, mergeWith: cachedEntity });
-  }
-
-  static async findOneRelation({
-    id,
-    spaceId,
-    cache,
-  }: {
-    id: string;
-    spaceId?: string;
-    cache: QueryClient;
-  }): Promise<Entity | null> {
-    const cachedEntity = await cache.fetchQuery({
-      queryKey: ['network', 'relation', id, spaceId],
-      queryFn: ({ signal }) => Effect.runPromise(getRelation(id, spaceId, signal)),
-    });
-
-    return cachedEntity;
   }
 
   static async findMany({

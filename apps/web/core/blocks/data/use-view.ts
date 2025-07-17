@@ -2,9 +2,9 @@ import { Id, Position, SystemIds } from '@graphprotocol/grc-20';
 
 import { ID } from '~/core/id';
 import { EntityId } from '~/core/io/schema';
-import { getRelationEntityRelations } from '~/core/io/v2/queries';
+import { useEditorStore } from '~/core/state/editor/use-editor';
 import { useMutate } from '~/core/sync/use-mutate';
-import { useQueryEntity, useQueryRelation } from '~/core/sync/use-store';
+import { useQueryEntity } from '~/core/sync/use-store';
 import { getImagePath } from '~/core/utils/utils';
 import { Entity, Relation } from '~/core/v2.types';
 
@@ -21,14 +21,16 @@ export function useView() {
   const { entityId, spaceId, relationId } = useDataBlockInstance();
   const { storage } = useMutate();
 
+  const { blockRelations } = useEditorStore();
+  let newRelationId = blockRelations.find(relation => relation.toEntity.id === entityId)?.entityId ?? '';
   const { entity: blockEntity } = useQueryEntity({
     spaceId: spaceId,
     id: entityId,
   });
 
-  const { entity: blockRelation } = useQueryRelation({
+  const { entity: blockRelation } = useQueryEntity({
     spaceId: spaceId,
-    id: relationId,
+    id: newRelationId,
   });
 
   const viewRelation = blockRelation?.relations.find(relation => relation.type.id === SystemIds.VIEW_PROPERTY);
@@ -68,7 +70,7 @@ export function useView() {
             name: 'View',
           },
           fromEntity: {
-            id: relationId,
+            id: newRelationId,
             name: blockEntity?.name ?? null,
           },
           toEntity: {

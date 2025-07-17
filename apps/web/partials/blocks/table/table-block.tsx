@@ -421,10 +421,8 @@ export const TableBlock = ({ spaceId }: Props) => {
             icon={filterState.length > 0 ? <FilterTableWithFilters /> : <FilterTable />}
             color="grey-04"
           />
-
           <DataBlockViewMenu activeView={view} isLoading={isLoading} />
           <TableBlockContextMenu />
-
           {renderPlusButtonAsInline && (
             <button onClick={onAddPlaceholder}>
               <Create />
@@ -432,7 +430,6 @@ export const TableBlock = ({ spaceId }: Props) => {
           )}
         </div>
       </div>
-
       {isFilterOpen && (
         <AnimatePresence>
           <motion.div
@@ -469,7 +466,6 @@ export const TableBlock = ({ spaceId }: Props) => {
           </motion.div>
         </AnimatePresence>
       )}
-
       <motion.div layout="position" transition={{ duration: 0.15 }}>
         {isLoading ? (
           <>

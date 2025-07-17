@@ -90,36 +90,6 @@ export function useQueryEntity({ id, spaceId, enabled = true, shouldHydrate = fa
   };
 }
 
-export function useQueryRelation({ id, spaceId, enabled = true }: QueryEntityOptions) {
-  const cache = useQueryClient();
-  const { store, stream } = useSyncEngine();
-
-  const { isFetched, data: entity } = useQuery({
-    enabled: Boolean(id) && enabled,
-    queryKey: GeoStore.queryKey(id),
-    queryFn: async () => {
-      // If the entity is in the store then it's already been synced and we can
-      // skip this work
-      if (!id) {
-        return null;
-      }
-
-      /**
-       * We explicitly don't query by space id here and let the sync
-       * engine handle filtering it as the hook receives events
-       */
-      const merged = await E.findOneRelation({ id, spaceId, cache });
-
-      return merged;
-    },
-  });
-
-  return {
-    entity,
-    isLoading: !isFetched && Boolean(id) && enabled,
-  };
-}
-
 type QueryEntitiesOptions = {
   where: WhereCondition;
   first?: number;

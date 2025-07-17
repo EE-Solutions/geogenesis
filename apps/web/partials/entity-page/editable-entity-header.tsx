@@ -31,7 +31,6 @@ export function EditableHeading({ spaceId, entityId }: { spaceId: string; entity
       ?.value;
   });
 
-
   const isEditing = useUserIsEditing(spaceId);
   const { storage } = useMutate();
 

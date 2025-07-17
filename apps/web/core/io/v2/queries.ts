@@ -2,7 +2,6 @@ import type { EntityFilter } from '~/core/gql/graphql';
 import { Entity, SearchResult } from '~/core/v2.types';
 
 import { Space } from '../dto/spaces';
-
 import { EntityDecoder, EntityTypeDecoder } from './decoders/entity';
 import { PropertyDecoder } from './decoders/property';
 import { RelationDecoder } from './decoders/relation';
@@ -17,7 +16,6 @@ import {
   entityTypesQuery,
   propertiesBatchQuery,
   propertyQuery,
-  relationEntityQuery,
   relationEntityRelationsQuery,
   resultQuery,
   resultsQuery,
@@ -69,17 +67,6 @@ export function getEntity(entityId: string, spaceId?: string, signal?: AbortCont
   });
 }
 
-export function getRelation(entityId: string, spaceId?: string, signal?: AbortController['signal']) {
-  return graphql({
-    query: relationEntityQuery,
-    decoder: data => {
-      return data.relation?.entity ? EntityDecoder.decode(data.relation.entity) : null;
-    },
-    variables: { id: entityId, spaceId },
-    signal,
-  });
-}
-
 export function getRelationEntityRelations(entityId: string, spaceId: string, signal?: AbortController['signal']) {
   return graphql({
     query: relationEntityRelationsQuery,
@@ -120,10 +107,19 @@ export function getEntityBacklinks(entityId: string, spaceId?: string, signal?: 
   return graphql({
     query: entityBacklinksQuery,
     decoder: data =>
-      data.entity?.backlinksList 
+      data.entity?.backlinksList
         ? (data.entity.backlinksList
             .map((e: any) => e?.fromEntity)
-            .filter((e): e is { id: string; name?: string | null; spaceIds: string[]; types: Array<{ id: string; name: string }> } => e !== null) ?? []) 
+            .filter(
+              (
+                e
+              ): e is {
+                id: string;
+                name?: string | null;
+                spaceIds: string[];
+                types: Array<{ id: string; name: string }>;
+              } => e !== null
+            ) ?? [])
         : [],
     variables: { id: entityId, spaceId },
     signal,
