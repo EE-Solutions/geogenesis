@@ -56,7 +56,6 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
     enabled: !!(propertyData?.renderableType || renderableTypeRelation?.toEntity.id),
   });
 
-  const dataTypeValue = propertyData?.dataType
   const isPropertyEntity = !!propertyData
 
   const propertyDataType = React.useMemo(() => {
@@ -240,8 +239,8 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
       // }
 
       // Update the dataType value if it's different from the current one
-      if (dataTypeValue && dataTypeValue.value !== baseDataType) {
-        console.log('🔄 Updating dataType from', dataTypeValue.value, 'to', baseDataType);
+      if (propertyData?.dataType !== baseDataType) {
+        console.log('🔄 Updating dataType from', propertyData?.dataType, 'to', baseDataType);
         storage.values.set({
           id: ID.createValueId({
             entityId,
@@ -260,7 +259,7 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
           spaceId,
           value: baseDataType,
         });
-      } else if (!dataTypeValue && !propertyData) {
+      } else if (!propertyData) {
         // If no dataType value exists and no propertyData, create the dataType value
         console.log('➕ Creating dataType value:', baseDataType);
         storage.values.set({
@@ -371,7 +370,7 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
     // 2. No property data exists from backend
     // 3. No dataType value exists (meaning we haven't created it yet)
     // 4. No existing Property type relation exists
-    if (existingPropertyTypeRelation && !propertyData && !dataTypeValue && entityId && spaceId) {
+    if (existingPropertyTypeRelation && !propertyData && entityId && spaceId) {
       console.log('🎯 Property type detected but no property data exists, creating property with default dataType');
       
       // Create the property with a default dataType of TEXT
@@ -382,7 +381,7 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
         dataType: 'TEXT',
       });
     }
-  }, [propertyData, dataTypeValue, entityId, spaceId, storage, name, relations]);
+  }, [propertyData, entityId, spaceId, storage, name, relations]);
 
   // Debug logging
   React.useEffect(() => {
