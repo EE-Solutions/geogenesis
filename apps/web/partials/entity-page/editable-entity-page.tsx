@@ -189,7 +189,159 @@ export function EditableEntityPage({ id, spaceId }: Props) {
           })}
         </div>
         <div className="p-4">
-          <SquareButton onClick={() => {}} icon={<Create />} />
+          <SelectEntityAsPopover
+            trigger={<SquareButton icon={<Create />} />}
+            spaceId={spaceId}
+            relationValueTypes={[{ id: SystemIds.PROPERTY, name: 'Property' }]}
+            onCreateEntity={result => {
+              // Get the selected property type from the result
+              const selectedPropertyType = result.selectedPropertyType || 'TEXT';
+              
+              // Map the selected property type to its base dataType and renderableType
+              let baseDataType: SwitchableRenderableType;
+              let renderableTypeId: string | null = null;
+
+              switch (selectedPropertyType) {
+                case 'TEXT':
+                  baseDataType = 'TEXT';
+                  renderableTypeId = null;
+                  break;
+                case 'URL':
+                  baseDataType = 'TEXT';
+                  renderableTypeId = SystemIds.URL;
+                  break;
+                case 'GEO_LOCATION':
+                  baseDataType = 'TEXT';
+                  renderableTypeId = GEO_LOCATION;
+                  break;
+                case 'RELATION':
+                  baseDataType = 'RELATION';
+                  renderableTypeId = null;
+                  break;
+                case 'IMAGE':
+                  baseDataType = 'RELATION';
+                  renderableTypeId = SystemIds.IMAGE;
+                  break;
+                case 'NUMBER':
+                  baseDataType = 'NUMBER';
+                  renderableTypeId = null;
+                  break;
+                case 'CHECKBOX':
+                  baseDataType = 'CHECKBOX';
+                  renderableTypeId = null;
+                  break;
+                case 'TIME':
+                  baseDataType = 'TIME';
+                  renderableTypeId = null;
+                  break;
+                case 'POINT':
+                  baseDataType = 'POINT';
+                  renderableTypeId = null;
+                  break;
+                default:
+                  baseDataType = 'TEXT';
+                  renderableTypeId = null;
+              }
+
+              // Create the name value
+              storage.values.set({
+                entity: {
+                  id: result.id,
+                  name: result.name,
+                },
+                property: {
+                  id: SystemIds.NAME_PROPERTY,
+                  name: 'Name',
+                  dataType: 'TEXT',
+                },
+                spaceId,
+                value: result.name ?? '',
+              });
+
+              // Create the dataType value
+              storage.values.set({
+                entity: {
+                  id: result.id,
+                  name: result.name || '',
+                },
+                property: {
+                  id: DATA_TYPE_PROPERTY,
+                  name: 'Data Type',
+                  dataType: 'TEXT',
+                },
+                spaceId,
+                value: baseDataType,
+              });
+
+              // Create the Property type relation
+              storage.relations.set({
+                id: Id.generate(),
+                entityId: Id.generate(),
+                spaceId,
+                renderableType: 'RELATION',
+                verified: result.verified,
+                toSpaceId: result.space,
+                position: Position.generate(),
+                type: {
+                  id: SystemIds.TYPES_PROPERTY,
+                  name: 'Types',
+                },
+                fromEntity: {
+                  id: result.id,
+                  name: result.name,
+                },
+                toEntity: {
+                  id: SystemIds.PROPERTY,
+                  name: 'Property',
+                  value: SystemIds.PROPERTY,
+                },
+              });
+
+              // If there's a renderableType, create the relation
+              if (renderableTypeId) {
+                storage.relations.set({
+                  id: Id.generate(),
+                  entityId: Id.generate(),
+                  spaceId,
+                  renderableType: 'RELATION',
+                  verified: false,
+                  position: Position.generate(),
+                  type: {
+                    id: RENDERABLE_TYPE_PROPERTY,
+                    name: 'Renderable Type',
+                  },
+                  fromEntity: {
+                    id: result.id,
+                    name: result.name,
+                  },
+                  toEntity: {
+                    id: renderableTypeId,
+                    name: selectedPropertyType,
+                    value: renderableTypeId,
+                  },
+                });
+              }
+            }}
+            onDone={result => {
+              // Create a placeholder value for the selected property on this entity
+              if (result) {
+                // Always add the property to the current entity, whether it was newly created or selected
+                storage.values.set({
+                  spaceId,
+                  entity: {
+                    id: id,
+                    name: name,
+                  },
+                  property: {
+                    id: result.id,
+                    name: result.name,
+                    dataType: 'TEXT', // Start with TEXT, will be corrected by the system
+                  },
+                  value: '',
+                });
+              }
+            }}
+          />
         </div>
       </div>
     </ShowablePanel>
@@ -666,6 +818,8 @@ export function RelationsGroup({ propertyId, id, spaceId }: RelationsGroupProps)
 function RenderedValue({ entityId, propertyId, spaceId }: { entityId: string; propertyId: string; spaceId: string }) {
   const { storage } = useMutate();
   const { property } = useQueryProperty({ id: propertyId });
+
+  console.log('RenderedValue property', propertyId, property);
 
   const values = useValues({
     selector: v => v.entity.id === entityId && v.spaceId === spaceId && v.property.id === propertyId,

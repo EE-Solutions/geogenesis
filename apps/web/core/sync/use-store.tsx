@@ -4,6 +4,7 @@ import { useSelector } from '@xstate/store/react';
 import { Effect } from 'effect';
 import equal from 'fast-deep-equal';
 import { SystemIds } from '@graphprotocol/grc-20';
+import * as React from 'react';
 
 import { DATA_TYPE_PROPERTY, RENDERABLE_TYPE_PROPERTY } from '../constants';
 import { getProperties, getProperty } from '../io/v2/queries';
@@ -235,8 +236,7 @@ export function useQueryProperty({ id, spaceId, enabled = true }: QueryEntityOpt
       const hasPropertyType = getRelations({ 
         selector: r => r.fromEntity.id === id && 
                      r.type.id === SystemIds.TYPES_PROPERTY && 
-                     r.toEntity.id === SystemIds.PROPERTY &&
-                     r.spaceId === spaceId
+                     r.toEntity.id === SystemIds.PROPERTY
       }).length > 0;
 
       if (!hasPropertyType) {
@@ -246,8 +246,7 @@ export function useQueryProperty({ id, spaceId, enabled = true }: QueryEntityOpt
       // Get the dataType value
       const dataTypeValue = getValues({
         selector: v => v.entity.id === id && 
-                      v.property.id === DATA_TYPE_PROPERTY &&
-                      v.spaceId === spaceId
+                      v.property.id === DATA_TYPE_PROPERTY
       })[0];
 
       if (!dataTypeValue) {
@@ -257,15 +256,13 @@ export function useQueryProperty({ id, spaceId, enabled = true }: QueryEntityOpt
       // Get the name value
       const nameValue = getValues({
         selector: v => v.entity.id === id && 
-                      v.property.id === SystemIds.NAME_PROPERTY &&
-                      v.spaceId === spaceId
+                      v.property.id === SystemIds.NAME_PROPERTY
       })[0];
 
       // Get the renderableType relation (if any)
       const renderableTypeRelation = getRelations({
         selector: r => r.fromEntity.id === id && 
-                      r.type.id === RENDERABLE_TYPE_PROPERTY &&
-                      r.spaceId === spaceId
+                      r.type.id === RENDERABLE_TYPE_PROPERTY
       })[0];
 
       // Construct a Property object
@@ -274,7 +271,6 @@ export function useQueryProperty({ id, spaceId, enabled = true }: QueryEntityOpt
         name: nameValue?.value || '',
         dataType: dataTypeValue.value as any,
         renderableType: renderableTypeRelation?.toEntity.id || null,
-        spaceId,
       };
 
       return property;
@@ -300,7 +296,7 @@ export function useQueryProperties({ ids, enabled = true }: QueryPropertiesOptio
   // const cache = useQueryClient();
   // const { store, stream } = useSyncEngine();
 
-  const { data: properties, isFetched } = useQuery({
+  const { data: remoteProperties, isFetched } = useQuery({
     enabled: enabled,
     queryKey: ['store', 'properties', JSON.stringify({ ids, enabled })],
     queryFn: async (): Promise<Property[]> => {
@@ -308,8 +304,90 @@ export function useQueryProperties({ ids, enabled = true }: QueryPropertiesOptio
     },
   });
 
+  // Also look for local property data
+  const localProperties = useSelector(
+    reactive,
+    () => {
+      if (!enabled || !ids.length) {
+        return [];
+      }
+
+      const localProps: Property[] = [];
+
+      for (const id of ids) {
+        // Check if this entity has a Property type relation
+        const hasPropertyType = getRelations({ 
+          selector: r => r.fromEntity.id === id && 
+                       r.type.id === SystemIds.TYPES_PROPERTY && 
+                       r.toEntity.id === SystemIds.PROPERTY
+        }).length > 0;
+
+        if (!hasPropertyType) {
+          continue;
+        }
+
+        // Get the dataType value
+        const dataTypeValue = getValues({
+          selector: v => v.entity.id === id && 
+                        v.property.id === DATA_TYPE_PROPERTY
+        })[0];
+
+        if (!dataTypeValue) {
+          continue;
+        }
+
+        // Get the name value
+        const nameValue = getValues({
+          selector: v => v.entity.id === id && 
+                        v.property.id === SystemIds.NAME_PROPERTY
+        })[0];
+
+        // Get the renderableType relation (if any)
+        const renderableTypeRelation = getRelations({
+          selector: r => r.fromEntity.id === id && 
+                        r.type.id === RENDERABLE_TYPE_PROPERTY
+        })[0];
+
+        // Construct a Property object
+        const property: Property = {
+          id,
+          name: nameValue?.value || '',
+          dataType: dataTypeValue.value as any,
+          renderableType: renderableTypeRelation?.toEntity.id || null,
+        };
+
+        localProps.push(property);
+      }
+
+      return localProps;
+    },
+    equal
+  );
+
+  // Merge remote and local properties, preferring remote when both exist
+  const allProperties = React.useMemo(() => {
+    const remotePropsMap = new Map((remoteProperties || []).map(p => [p.id, p]));
+    const localPropsMap = new Map(localProperties.map(p => [p.id, p]));
+    
+    const merged: Property[] = [];
+    
+    for (const id of ids) {
+      const remoteProp = remotePropsMap.get(id);
+      const localProp = localPropsMap.get(id);
+      
+      // Prefer remote property, but fall back to local
+      if (remoteProp) {
+        merged.push(remoteProp);
+      } else if (localProp) {
+        merged.push(localProp);
+      }
+    }
+    
+    return merged;
+  }, [remoteProperties, localProperties, ids]);
+
   return {
-    properties: properties,
+    properties: allProperties,
     isLoading: !isFetched && enabled,
   };
 }
