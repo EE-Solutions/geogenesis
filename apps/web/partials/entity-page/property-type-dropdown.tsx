@@ -21,6 +21,7 @@ import { ColorName } from '~/design-system/theme/colors';
 interface Props {
   value?: SwitchableRenderableType;
   onChange?: (value: SwitchableRenderableType) => void;
+  baseDataType?: string;
 }
 
 const icons: Record<SwitchableRenderableType, React.FunctionComponent<{ color?: ColorName }>> = {
@@ -47,14 +48,34 @@ const typeOptions: Record<SwitchableRenderableType, string> = {
   GEO_LOCATION: 'Geo Location',
 };
 
-export const PropertyTypeDropdown = ({ value, onChange }: Props) => {
+// Map each type to its base dataType
+const typeToBaseDataType: Record<SwitchableRenderableType, string> = {
+  TEXT: 'TEXT',
+  URL: 'TEXT',
+  RELATION: 'RELATION',
+  IMAGE: 'RELATION',
+  NUMBER: 'NUMBER',
+  CHECKBOX: 'CHECKBOX',
+  TIME: 'TIME',
+  POINT: 'POINT',
+  GEO_LOCATION: 'POINT',
+};
+
+export const PropertyTypeDropdown = ({ value, onChange, baseDataType }: Props) => {
   const [open, setOpen] = useState(false);
 
   // Show all available property types
   const availableOptions = React.useMemo(() => {
-    // Return all possible property types
-    return Object.keys(typeOptions) as SwitchableRenderableType[];
-  }, []);
+    // If no baseDataType is provided, return all options (unpublished property)
+    if (!baseDataType) {
+      return Object.keys(typeOptions) as SwitchableRenderableType[];
+    }
+    
+    // Filter options to only those with matching base dataType (published property)
+    return (Object.keys(typeOptions) as SwitchableRenderableType[]).filter(
+      type => typeToBaseDataType[type] === baseDataType
+    );
+  }, [baseDataType]);
 
   const options = availableOptions.map(key => ({
     value: key,
@@ -101,7 +122,6 @@ export const PropertyTypeDropdown = ({ value, onChange }: Props) => {
               <DropdownPrimitive.Item
                 key={`triple-type-dropdown-${index}`}
                 onClick={() => {
-                  console.log('🎯 Dropdown item clicked:', option.value);
                   option.onClick(option.value);
                 }}
                 className={cx(

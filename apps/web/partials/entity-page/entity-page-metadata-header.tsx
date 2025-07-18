@@ -43,7 +43,32 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
     enabled: true,
   });
 
-  console.log('propertyData:', propertyData);
+  // Check if this entity has a Property type relation (local property check)
+  const hasLocalPropertyType = relations.find(
+    r => r.fromEntity.id === entityId && 
+         r.type.id === SystemIds.TYPES_PROPERTY && 
+         r.toEntity.id === SystemIds.PROPERTY
+  );
+
+  // Determine if property is unpublished by checking if the property data is local only
+  const isUnpublishedProperty = React.useMemo(() => {
+    // If no property data exists, it's not a property
+    if (!propertyData) {
+      return false;
+    }
+    
+    // Check if the property has been published by looking at local relations/values
+    // If the Property type relation is local and hasn't been published, it's unpublished
+    const propertyTypeRelation = relations.find(
+      r => r.fromEntity.id === entityId && 
+           r.type.id === SystemIds.TYPES_PROPERTY && 
+           r.toEntity.id === SystemIds.PROPERTY
+    );
+    
+    // If the relation exists and is local/unpublished, then the property is unpublished
+    return propertyTypeRelation && 
+           (propertyTypeRelation.isLocal === true || propertyTypeRelation.hasBeenPublished === false);
+  }, [propertyData, relations, entityId]);
 
   // Find renderableType relation
   const renderableTypeRelation = relations.find(
@@ -58,10 +83,10 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
 
   const isPropertyEntity = !!propertyData
 
+
   const propertyDataType = React.useMemo(() => {
     // If we have propertyData from the backend, use it
     if (propertyData) {
-      console.log('🔍 Using propertyData for propertyDataType:', propertyData);
       let renderableType = null;
       if (propertyData.renderableType && renderableTypeEntity) {
         // It's a UUID, use the entity data
@@ -83,13 +108,6 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
 
   // Determine the current renderable type based on property data
   const currentRenderableType = React.useMemo(() => {
-    console.log('🔍 currentRenderableType calculation:', {
-      propertyDataType,
-      hasRenderableType: !!propertyDataType?.renderableType,
-      renderableTypeName: propertyDataType?.renderableType?.name,
-      dataType: propertyDataType?.dataType,
-      renderableTypeRelation,
-    });
     
     if (!propertyDataType) return undefined;
     
@@ -97,83 +115,50 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
     if (propertyDataType.renderableType) {
       const renderableTypeName = propertyDataType.renderableType.name;
       
-      console.log('🔎 Mapping renderableType:', {
-        renderableTypeName,
-        renderableTypeId: propertyDataType.renderableType.id,
-        renderableTypeRelation,
-      });
       
       // Map renderableType entity names to SwitchableRenderableType
       let mappedType: SwitchableRenderableType;
       const renderableTypeId = propertyDataType.renderableType.id;
       
-      console.log('🔎 Detailed renderableType mapping:', {
-        renderableTypeName,
-        renderableTypeId,
-        exactMatch: renderableTypeName === 'URL',
-        caseInsensitiveMatch: renderableTypeName?.toLowerCase() === 'url',
-      });
       
       switch (renderableTypeName) {
         case 'URL':
         case 'url':
-          console.log('✅ Matched URL case');
           mappedType = 'URL';
           break;
         case 'GeoLocation':
         case 'Geo Location':
         case 'geo-location':
-          console.log('✅ Matched GEO_LOCATION case');
           mappedType = 'GEO_LOCATION';
           break;
         case 'Image':
         case 'image':
-          console.log('✅ Matched IMAGE case');
           mappedType = 'IMAGE';
           break;
         default:
-          console.log('⚠️ Fell through to default case');
           // If we can't map it, check if it's a placeholder ID we created
           if (renderableTypeName === 'URL' || renderableTypeId === SystemIds.URL) {
-            console.log('✅ Matched URL in default case');
             mappedType = 'URL';
           } else if (renderableTypeName === 'GEO_LOCATION' || renderableTypeId === GEO_LOCATION) {
-            console.log('✅ Matched GEO_LOCATION in default case');
             mappedType = 'GEO_LOCATION';
           } else if (renderableTypeName === 'IMAGE' || renderableTypeId === SystemIds.IMAGE) {
-            console.log('✅ Matched IMAGE in default case');
             mappedType = 'IMAGE';
           } else {
-            console.warn('⚠️ Unknown renderableType name:', renderableTypeName, 'with ID:', renderableTypeId);
             mappedType = propertyDataType.dataType as SwitchableRenderableType;
           }
       }
       
-      console.log('🎯 Mapped renderableType:', {
-        renderableTypeName,
-        mappedType,
-        fallbackDataType: propertyDataType.dataType,
-      });
       
       return mappedType;
     }
     
     // Otherwise, default to the base dataType
     const baseType = propertyDataType.dataType as SwitchableRenderableType;
-    console.log('📦 Using base dataType:', baseType);
     return baseType;
   }, [propertyDataType, renderableTypeRelation]);
 
   const handlePropertyTypeChange = React.useCallback(
     (newType: SwitchableRenderableType) => {
-      console.log('🚀 handlePropertyTypeChange called:', {
-        newType,
-        entityId,
-        spaceId,
-        currentPropertyData: propertyData,
-        currentRenderableType,
-        relationsCount: relations.length,
-      });
 
       if (!entityId || !spaceId) return;
 
@@ -190,10 +175,6 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
         case 'URL':
           baseDataType = 'TEXT';
           renderableTypeId = SystemIds.URL;
-          break;
-        case 'GEO_LOCATION':
-          baseDataType = 'TEXT';
-          renderableTypeId = GEO_LOCATION; // TODO: Replace with actual GEO_LOCATION id
           break;
         case 'RELATION':
           baseDataType = 'RELATION';
@@ -219,28 +200,25 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
           baseDataType = 'POINT';
           renderableTypeId = null;
           break;
+        case 'GEO_LOCATION':
+          baseDataType = 'POINT';
+          renderableTypeId = GEO_LOCATION; // TODO: Replace with actual GEO_LOCATION id
+          break;
         default:
           console.warn('Unknown property type:', newType);
           return;
       }
 
-      console.log('📋 Property type mapping:', {
-        newType,
-        baseDataType,
-        renderableTypeId,
-        needsRenderableType: !!renderableTypeId,
-      });
 
-      // Properties can't change their base dataType after creation
-      // if (propertyData && propertyData.dataType !== baseDataType) {
-      //   console.warn('Cannot change property dataType from', propertyData.dataType, 'to', baseDataType);
-      //   console.warn('Properties cannot change their base dataType after creation');
-      //   return;
-      // }
+      // Published properties can't change their base dataType
+      if (!isUnpublishedProperty && propertyData && propertyData.dataType !== baseDataType) {
+        console.warn('Cannot change property dataType from', propertyData.dataType, 'to', baseDataType);
+        console.warn('Published properties cannot change their base dataType');
+        return;
+      }
 
       // Update the dataType value if it's different from the current one
       if (propertyData?.dataType !== baseDataType) {
-        console.log('🔄 Updating dataType from', propertyData?.dataType, 'to', baseDataType);
         storage.values.set({
           id: ID.createValueId({
             entityId,
@@ -261,7 +239,6 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
         });
       } else if (!propertyData) {
         // If no dataType value exists and no propertyData, create the dataType value
-        console.log('➕ Creating dataType value:', baseDataType);
         storage.values.set({
           id: ID.createValueId({
             entityId,
@@ -283,38 +260,16 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
       }
 
       // Handle the renderableType relation
-      console.log('🔍 Looking for existing relation:', {
-        entityId,
-        RENDERABLE_TYPE_PROPERTY,
-        totalRelations: relations.length,
-        relationsForEntity: relations.filter(r => r.fromEntity.id === entityId).map(r => ({
-          typeId: r.type.id,
-          typeName: r.type.name,
-          toEntityId: r.toEntity.id,
-          toEntityName: r.toEntity.name,
-        })),
-      });
 
       const existingRelation = relations.find(
         r => r.fromEntity.id === entityId && r.type.id === RENDERABLE_TYPE_PROPERTY
       );
 
-      console.log('🔗 Relation management:', {
-        existingRelation: existingRelation ? {
-          id: existingRelation.id,
-          fromEntityId: existingRelation.fromEntity.id,
-          toEntityId: existingRelation.toEntity.id,
-          toEntityName: existingRelation.toEntity.name,
-        } : null,
-        renderableTypeId,
-        action: renderableTypeId ? (existingRelation ? 'update' : 'create') : (existingRelation ? 'delete' : 'none'),
-      });
 
       if (renderableTypeId) {
         // Need to set or update the renderableType relation
         if (existingRelation) {
           // Update existing relation
-          console.log('🔄 Updating existing relation');
           storage.relations.update(existingRelation, draft => {
             draft.toEntity.id = renderableTypeId;
             draft.toEntity.name = newType;
@@ -322,7 +277,6 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
           });
         } else {
           // Create new relation
-          console.log('➕ Creating new relation');
           storage.relations.set({
             id: Id.generate(),
             entityId: ID.createEntityId(),
@@ -348,14 +302,12 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
       } else {
         // Remove renderableType relation if it exists
         if (existingRelation) {
-          console.log('🗑️ Deleting existing relation');
           storage.relations.delete(existingRelation);
         } else {
-          console.log('✅ No relation to delete');
         }
       }
     },
-    [entityId, spaceId, storage, propertyData, relations, currentRenderableType]
+    [entityId, spaceId, storage, propertyData, relations, currentRenderableType, isUnpublishedProperty, name]
   );
 
   // Create property data when Property type is added
@@ -371,7 +323,6 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
     // 3. No dataType value exists (meaning we haven't created it yet)
     // 4. No existing Property type relation exists
     if (existingPropertyTypeRelation && !propertyData && entityId && spaceId) {
-      console.log('🎯 Property type detected but no property data exists, creating property with default dataType');
       
       // Create the property with a default dataType of TEXT
       storage.properties.create({
@@ -386,12 +337,6 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
   // Debug logging
   React.useEffect(() => {
     if (propertyData) {
-      console.log('Entity has property type', {
-        entityId,
-        propertyData,
-        propertyDataType,
-        currentRenderableType,
-      });
     }
   }, [entityId, propertyData, propertyDataType, currentRenderableType]);
 
@@ -402,6 +347,7 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
           <PropertyTypeDropdown 
             value={currentRenderableType} 
             onChange={handlePropertyTypeChange}
+            baseDataType={isUnpublishedProperty ? undefined : propertyDataType?.dataType}
           />
           <Divider type="vertical" style="solid" className="h-[12px] border-divider" />
         </div>
