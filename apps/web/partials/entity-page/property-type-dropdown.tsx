@@ -17,6 +17,7 @@ import { Relation } from '~/design-system/icons/relation';
 import { Text } from '~/design-system/icons/text';
 import { Url } from '~/design-system/icons/url';
 import { ColorName } from '~/design-system/theme/colors';
+import { typeToBaseDataType } from '~/core/utils/property-type-mapping';
 
 interface Props {
   value?: SwitchableRenderableType;
@@ -48,18 +49,6 @@ const typeOptions: Record<SwitchableRenderableType, string> = {
   GEO_LOCATION: 'Geo Location',
 };
 
-// Map each type to its base dataType
-const typeToBaseDataType: Record<SwitchableRenderableType, string> = {
-  TEXT: 'TEXT',
-  URL: 'TEXT',
-  RELATION: 'RELATION',
-  IMAGE: 'RELATION',
-  NUMBER: 'NUMBER',
-  CHECKBOX: 'CHECKBOX',
-  TIME: 'TIME',
-  POINT: 'POINT',
-  GEO_LOCATION: 'POINT',
-};
 
 export const PropertyTypeDropdown = ({ value, onChange, baseDataType }: Props) => {
   const [open, setOpen] = useState(false);

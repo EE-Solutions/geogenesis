@@ -19,6 +19,7 @@ import { PropertyTypeDropdown } from './property-type-dropdown';
 import { RelationsGroup as ReadableRelationsGroup } from './readable-entity-page';
 import { useEntityStoreInstance } from '~/core/state/entity-page-store/entity-store-provider';
 import { useName } from '~/core/state/entity-page-store/entity-store';
+import { mapPropertyType } from '~/core/utils/property-type-mapping';
 
 interface EntityPageMetadataHeaderProps {
   id: string;
@@ -167,47 +168,9 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
       let renderableTypeId: string | null = null;
 
       // Map property types to their base dataType and renderableType
-      switch (newType) {
-        case 'TEXT':
-          baseDataType = 'TEXT';
-          renderableTypeId = null;
-          break;
-        case 'URL':
-          baseDataType = 'TEXT';
-          renderableTypeId = SystemIds.URL;
-          break;
-        case 'RELATION':
-          baseDataType = 'RELATION';
-          renderableTypeId = null;
-          break;
-        case 'IMAGE':
-          baseDataType = 'RELATION';
-          renderableTypeId = SystemIds.IMAGE;
-          break;
-        case 'NUMBER':
-          baseDataType = 'NUMBER';
-          renderableTypeId = null;
-          break;
-        case 'CHECKBOX':
-          baseDataType = 'CHECKBOX';
-          renderableTypeId = null;
-          break;
-        case 'TIME':
-          baseDataType = 'TIME';
-          renderableTypeId = null;
-          break;
-        case 'POINT':
-          baseDataType = 'POINT';
-          renderableTypeId = null;
-          break;
-        case 'GEO_LOCATION':
-          baseDataType = 'POINT';
-          renderableTypeId = GEO_LOCATION; // TODO: Replace with actual GEO_LOCATION id
-          break;
-        default:
-          console.warn('Unknown property type:', newType);
-          return;
-      }
+      const mapping = mapPropertyType(newType);
+      baseDataType = mapping.baseDataType;
+      renderableTypeId = mapping.renderableTypeId;
 
 
       // Published properties can't change their base dataType
