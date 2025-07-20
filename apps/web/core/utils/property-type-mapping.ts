@@ -1,13 +1,13 @@
 import { SystemIds } from '@graphprotocol/grc-20';
 import { GEO_LOCATION } from '~/core/constants';
-import { SwitchableRenderableType } from '~/core/v2.types';
+import { DataType, SwitchableRenderableType } from '~/core/v2.types';
 
 /**
  * Interface for property type mapping configuration
  */
 export interface PropertyTypeMapping {
   /** The base data type for the property */
-  baseDataType: SwitchableRenderableType;
+  baseDataType: DataType;
   /** The renderable type ID if different from base type, null otherwise */
   renderableTypeId: string | null;
 }

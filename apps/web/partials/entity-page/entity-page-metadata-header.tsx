@@ -8,7 +8,7 @@ import { RENDERABLE_TYPE_PROPERTY, DATA_TYPE_PROPERTY, GEO_LOCATION } from '~/co
 import { useUserIsEditing } from '~/core/hooks/use-user-is-editing';
 import { ID } from '~/core/id';
 import { useMutate } from '~/core/sync/use-mutate';
-import { useQueryEntity, useQueryProperty, useRelations } from '~/core/sync/use-store';
+import { useQueryEntity, useQueryProperty, useRelations, useValues } from '~/core/sync/use-store';
 import { SwitchableRenderableType } from '~/core/v2.types';
 
 import { Divider } from '~/design-system/divider';
@@ -20,6 +20,23 @@ import { RelationsGroup as ReadableRelationsGroup } from './readable-entity-page
 import { useEntityStoreInstance } from '~/core/state/entity-page-store/entity-store-provider';
 import { useName } from '~/core/state/entity-page-store/entity-store';
 import { mapPropertyType } from '~/core/utils/property-type-mapping';
+import { 
+  isPropertyUnpublished, 
+  constructPropertyDataType, 
+  getCurrentRenderableType 
+} from '~/core/utils/property-type-utils';
+
+const typeOptions: Record<SwitchableRenderableType, string> = {
+  TIME: 'Time',
+  TEXT: 'Text',
+  URL: 'Url',
+  RELATION: 'Relation',
+  IMAGE: 'Image',
+  CHECKBOX: 'Checkbox',
+  NUMBER: 'Number',
+  POINT: 'Point',
+  GEO_LOCATION: 'Geo Location',
+};
 
 interface EntityPageMetadataHeaderProps {
   id: string;
@@ -31,6 +48,9 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
   const relations = useRelations({
     selector: r => r.fromEntity.id === entityId && r.spaceId === spaceId,
   })
+  const values = useValues({
+    selector: v => v.entity.id === entityId && v.spaceId === spaceId,
+  })
   const name = useName(entityId);
   
   const { storage } = useMutate();
@@ -39,7 +59,7 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
 
   // Fetch property data type to see if this is a property entity
   const { property: propertyData } = useQueryProperty({
-    id,
+    id: entityId, // Use entityId consistently
     spaceId,
     enabled: true,
   });
@@ -53,22 +73,13 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
 
   // Determine if property is unpublished by checking if the property data is local only
   const isUnpublishedProperty = React.useMemo(() => {
-    // If no property data exists, it's not a property
-    if (!propertyData) {
-      return false;
-    }
-    
-    // Check if the property has been published by looking at local relations/values
-    // If the Property type relation is local and hasn't been published, it's unpublished
     const propertyTypeRelation = relations.find(
       r => r.fromEntity.id === entityId && 
            r.type.id === SystemIds.TYPES_PROPERTY && 
            r.toEntity.id === SystemIds.PROPERTY
     );
     
-    // If the relation exists and is local/unpublished, then the property is unpublished
-    return propertyTypeRelation && 
-           (propertyTypeRelation.isLocal === true || propertyTypeRelation.hasBeenPublished === false);
+    return isPropertyUnpublished(propertyData, propertyTypeRelation);
   }, [propertyData, relations, entityId]);
 
   // Find renderableType relation
@@ -82,81 +93,23 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
     enabled: !!(propertyData?.renderableType || renderableTypeRelation?.toEntity.id),
   });
 
-  const isPropertyEntity = !!propertyData
+  const isPropertyEntity = !!propertyData || !!hasLocalPropertyType
 
 
   const propertyDataType = React.useMemo(() => {
-    // If we have propertyData from the backend, use it
-    if (propertyData) {
-      let renderableType = null;
-      if (propertyData.renderableType && renderableTypeEntity) {
-        // It's a UUID, use the entity data
-        renderableType = {
-          id: renderableTypeEntity.id,
-          name: renderableTypeEntity.name,
-        };
-      }
-
-      return {
-        id: propertyData.id || '',
-        dataType: propertyData.dataType || '',
-        renderableType,
-      };
-    }
-    
-    return null;
-  }, [propertyData, renderableTypeEntity, entityId, renderableTypeRelation]);
+    return constructPropertyDataType(
+      propertyData,
+      renderableTypeEntity,
+      renderableTypeRelation,
+      entityId,
+      hasLocalPropertyType
+    );
+  }, [propertyData, renderableTypeEntity, entityId, renderableTypeRelation, hasLocalPropertyType]);
 
   // Determine the current renderable type based on property data
   const currentRenderableType = React.useMemo(() => {
-    
-    if (!propertyDataType) return undefined;
-    
-    // If there's a renderableType relation, map it to the appropriate type
-    if (propertyDataType.renderableType) {
-      const renderableTypeName = propertyDataType.renderableType.name;
-      
-      
-      // Map renderableType entity names to SwitchableRenderableType
-      let mappedType: SwitchableRenderableType;
-      const renderableTypeId = propertyDataType.renderableType.id;
-      
-      
-      switch (renderableTypeName) {
-        case 'URL':
-        case 'url':
-          mappedType = 'URL';
-          break;
-        case 'GeoLocation':
-        case 'Geo Location':
-        case 'geo-location':
-          mappedType = 'GEO_LOCATION';
-          break;
-        case 'Image':
-        case 'image':
-          mappedType = 'IMAGE';
-          break;
-        default:
-          // If we can't map it, check if it's a placeholder ID we created
-          if (renderableTypeName === 'URL' || renderableTypeId === SystemIds.URL) {
-            mappedType = 'URL';
-          } else if (renderableTypeName === 'GEO_LOCATION' || renderableTypeId === GEO_LOCATION) {
-            mappedType = 'GEO_LOCATION';
-          } else if (renderableTypeName === 'IMAGE' || renderableTypeId === SystemIds.IMAGE) {
-            mappedType = 'IMAGE';
-          } else {
-            mappedType = propertyDataType.dataType as SwitchableRenderableType;
-          }
-      }
-      
-      
-      return mappedType;
-    }
-    
-    // Otherwise, default to the base dataType
-    const baseType = propertyDataType.dataType as SwitchableRenderableType;
-    return baseType;
-  }, [propertyDataType, renderableTypeRelation]);
+    return getCurrentRenderableType(propertyDataType);
+  }, [propertyDataType]);
 
   const handlePropertyTypeChange = React.useCallback(
     (newType: SwitchableRenderableType) => {
@@ -200,6 +153,8 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
           spaceId,
           value: baseDataType,
         });
+        // Update the registered dataType in the store
+        storage.properties.setDataType(entityId, baseDataType);
       } else if (!propertyData) {
         // If no dataType value exists and no propertyData, create the dataType value
         storage.values.set({
@@ -220,6 +175,8 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
           spaceId,
           value: baseDataType,
         });
+        // Register the dataType in the store
+        storage.properties.setDataType(entityId, baseDataType);
       }
 
       // Handle the renderableType relation
@@ -235,7 +192,7 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
           // Update existing relation
           storage.relations.update(existingRelation, draft => {
             draft.toEntity.id = renderableTypeId;
-            draft.toEntity.name = newType;
+            draft.toEntity.name = typeOptions[newType] || newType;
             draft.toEntity.value = renderableTypeId;
           });
         } else {
@@ -253,7 +210,7 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
             },
             toEntity: {
               id: renderableTypeId,
-              name: newType,
+              name: typeOptions[newType] || newType,
               value: renderableTypeId,
             },
             spaceId,
@@ -266,7 +223,6 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
         // Remove renderableType relation if it exists
         if (existingRelation) {
           storage.relations.delete(existingRelation);
-        } else {
         }
       }
     },

@@ -9,7 +9,8 @@ import * as React from 'react';
 import { DATA_TYPE_PROPERTY, RENDERABLE_TYPE_PROPERTY } from '../constants';
 import { getProperties, getProperty } from '../io/v2/queries';
 import { Values } from '../utils/value';
-import { Property, Relation, Value } from '../v2.types';
+import { reconstructPropertyFromStore } from '../utils/property-reconstruction';
+import { DataType, Property, Relation, Value } from '../v2.types';
 import { EntityQuery, WhereCondition } from './experimental_query-layer';
 import { E, mergeRelations } from './orm';
 import { GeoStore, reactiveRelations, reactiveValues } from './store';
@@ -224,65 +225,32 @@ export function useQueryProperty({ id, spaceId, enabled = true }: QueryEntityOpt
     },
   });
 
-  // Also look for local property data
-  const localProperty = useSelector(
+  // Try store.getProperty first (for local properties with dataType registered)
+  // Fall back to manual reconstruction (for existing properties added to entities)
+  const property = useSelector(
     reactive,
     () => {
       if (!id || !enabled) {
         return null;
       }
 
-      // Check if this entity has a Property type relation
-      const hasPropertyType = getRelations({ 
-        selector: r => r.fromEntity.id === id && 
-                     r.type.id === SystemIds.TYPES_PROPERTY && 
-                     r.toEntity.id === SystemIds.PROPERTY
-      }).length > 0;
-
-      if (!hasPropertyType) {
-        return null;
+      // First try the store's getProperty method (works for registered local properties)
+      const storeProperty = store.getProperty(id);
+      if (storeProperty) {
+        return storeProperty;
       }
 
-      // Get the dataType value
-      const dataTypeValue = getValues({
-        selector: v => v.entity.id === id && 
-                      v.property.id === DATA_TYPE_PROPERTY
-      })[0];
-
-      if (!dataTypeValue) {
-        return null;
-      }
-
-      // Get the name value
-      const nameValue = getValues({
-        selector: v => v.entity.id === id && 
-                      v.property.id === SystemIds.NAME_PROPERTY
-      })[0];
-
-      // Get the renderableType relation (if any)
-      const renderableTypeRelation = getRelations({
-        selector: r => r.fromEntity.id === id && 
-                      r.type.id === RENDERABLE_TYPE_PROPERTY
-      })[0];
-
-      // Construct a Property object
-      const property: Property = {
-        id,
-        name: nameValue?.value || '',
-        dataType: dataTypeValue.value as any,
-        renderableType: renderableTypeRelation?.toEntity.id || null,
-      };
-
-      return property;
+      // Fall back to manual reconstruction for existing properties
+      return reconstructPropertyFromStore(id, getValues, getRelations);
     },
     equal
   );
 
-  // Prefer remote property data, but fall back to local
-  const property = remoteProperty || localProperty;
+  // Prefer remote property data, then local store, then reconstructed
+  const finalProperty = remoteProperty || property;
 
   return {
-    property,
+    property: finalProperty,
     isLoading: !isFetched && Boolean(id) && enabled,
   };
 }
@@ -293,8 +261,8 @@ type QueryPropertiesOptions = {
 };
 
 export function useQueryProperties({ ids, enabled = true }: QueryPropertiesOptions) {
-  // const cache = useQueryClient();
-  // const { store, stream } = useSyncEngine();
+  const cache = useQueryClient();
+  const { store } = useSyncEngine();
 
   const { data: remoteProperties, isFetched } = useQuery({
     enabled: enabled,
@@ -304,7 +272,7 @@ export function useQueryProperties({ ids, enabled = true }: QueryPropertiesOptio
     },
   });
 
-  // Also look for local property data
+  // Try store.getProperty first, fall back to manual reconstruction
   const localProperties = useSelector(
     reactive,
     () => {
@@ -312,54 +280,24 @@ export function useQueryProperties({ ids, enabled = true }: QueryPropertiesOptio
         return [];
       }
 
-      const localProps: Property[] = [];
+      const props: Property[] = [];
 
       for (const id of ids) {
-        // Check if this entity has a Property type relation
-        const hasPropertyType = getRelations({ 
-          selector: r => r.fromEntity.id === id && 
-                       r.type.id === SystemIds.TYPES_PROPERTY && 
-                       r.toEntity.id === SystemIds.PROPERTY
-        }).length > 0;
-
-        if (!hasPropertyType) {
+        // First try the store's getProperty method
+        const storeProperty = store.getProperty(id);
+        if (storeProperty) {
+          props.push(storeProperty);
           continue;
         }
 
-        // Get the dataType value
-        const dataTypeValue = getValues({
-          selector: v => v.entity.id === id && 
-                        v.property.id === DATA_TYPE_PROPERTY
-        })[0];
-
-        if (!dataTypeValue) {
-          continue;
+        // Fall back to manual reconstruction for existing properties
+        const reconstructedProperty = reconstructPropertyFromStore(id, getValues, getRelations);
+        if (reconstructedProperty) {
+          props.push(reconstructedProperty);
         }
-
-        // Get the name value
-        const nameValue = getValues({
-          selector: v => v.entity.id === id && 
-                        v.property.id === SystemIds.NAME_PROPERTY
-        })[0];
-
-        // Get the renderableType relation (if any)
-        const renderableTypeRelation = getRelations({
-          selector: r => r.fromEntity.id === id && 
-                        r.type.id === RENDERABLE_TYPE_PROPERTY
-        })[0];
-
-        // Construct a Property object
-        const property: Property = {
-          id,
-          name: nameValue?.value || '',
-          dataType: dataTypeValue.value as any,
-          renderableType: renderableTypeRelation?.toEntity.id || null,
-        };
-
-        localProps.push(property);
       }
 
-      return localProps;
+      return props;
     },
     equal
   );

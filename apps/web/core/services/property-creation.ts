@@ -81,6 +81,9 @@ export class PropertyCreationService {
       value: baseDataType,
     });
 
+    // Register the dataType with the store so getProperty works
+    this.storage.properties.setDataType(entityId, baseDataType);
+
     // Create the Property type relation
     this.storage.relations.set({
       id: Id.generate(),

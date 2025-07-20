@@ -79,6 +79,9 @@ function createMutator(store: GeoStore): Mutator {
       },
     },
     properties: {
+      setDataType: (entityId: string, dataType: DataType) => {
+        store.setDataType(entityId, dataType);
+      },
       create: ({ entityId, spaceId, name, dataType }) => {
         // Set the name value
         const nameValue: Value = {
@@ -122,55 +125,9 @@ function createMutator(store: GeoStore): Mutator {
           value: dataType,
         };
 
-        // Create the Property type relation
-        // const propertyTypeRelation: Relation = {
-        //   id: ID.createEntityId(),
-        //   entityId: ID.createEntityId(),
-        //   spaceId,
-        //   renderableType: 'RELATION',
-        //   verified: false,
-        //   position: null,
-        //   type: {
-        //     id: SystemIds.TYPES_PROPERTY,
-        //     name: 'Types',
-        //   },
-        //   fromEntity: {
-        //     id: entityId,
-        //     name,
-        //   },
-        //   toEntity: {
-        //     id: SystemIds.PROPERTY,
-        //     name: 'Property',
-        //     value: SystemIds.PROPERTY,
-        //   },
-        // };
-
-        // create the data type relation
-        // const dataTypeRelation: Relation = {
-        //   id: ID.createEntityId(),
-        //   entityId: ID.createEntityId(),
-        //   spaceId,
-        //   renderableType: 'RELATION',
-        //   verified: false,
-        //   type: {
-        //     id: SystemIds.TYPES_PROPERTY,
-        //     name: 'Types',
-        //   },
-        //   fromEntity: {
-        //     id: entityId,
-        //     name,
-        //   },
-        //   toEntity: {
-        //     id: DATA_TYPE_PROPERTY,
-        //     name: 'Data Type',
-        //     value: dataType,
-        //   },
-        // };
-
         store.setValue(nameValue);
         store.setValue(dataTypeValue);
-        // store.setRelation(propertyTypeRelation);
-        // store.setRelation(dataTypeRelation);
+        store.setDataType(entityId, dataType);
       },
     },
     values: {
