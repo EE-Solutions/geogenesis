@@ -1,8 +1,8 @@
 import { Id, Position, SystemIds } from '@graphprotocol/grc-20';
 import { RENDERABLE_TYPE_PROPERTY, DATA_TYPE_PROPERTY } from '~/core/constants';
-import { ID } from '~/core/id';
 import { SwitchableRenderableType } from '~/core/v2.types';
-import { mapPropertyType } from '~/core/utils/property-type-mapping';
+import { Properties } from '~/core/utils/property';
+import { PropertyStorage } from './property-creation.types';
 
 /**
  * Parameters for creating a new property
@@ -42,14 +42,14 @@ export interface AddPropertyToEntityParams {
  * Service for handling property creation operations
  */
 export class PropertyCreationService {
-  constructor(private storage: any) {}
+  constructor(private storage: PropertyStorage) {}
 
   /**
    * Creates a new property with the specified configuration
    */
   createProperty(params: CreatePropertyParams): void {
     const { entityId, spaceId, name, propertyType, verified = false, space } = params;
-    const { baseDataType, renderableTypeId } = mapPropertyType(propertyType);
+    const { baseDataType, renderableTypeId } = Properties.mapPropertyType(propertyType);
 
     // Create the name value
     this.storage.values.set({
@@ -156,6 +156,6 @@ export class PropertyCreationService {
 /**
  * Factory function to create a PropertyCreationService instance
  */
-export function createPropertyCreationService(storage: any): PropertyCreationService {
+export function createPropertyCreationService(storage: PropertyStorage): PropertyCreationService {
   return new PropertyCreationService(storage);
 }

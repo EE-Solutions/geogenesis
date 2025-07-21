@@ -4,11 +4,11 @@ import { Id, Position, SystemIds } from '@graphprotocol/grc-20';
 
 import * as React from 'react';
 
-import { RENDERABLE_TYPE_PROPERTY, DATA_TYPE_PROPERTY, GEO_LOCATION } from '~/core/constants';
+import { RENDERABLE_TYPE_PROPERTY, DATA_TYPE_PROPERTY } from '~/core/constants';
 import { useUserIsEditing } from '~/core/hooks/use-user-is-editing';
 import { ID } from '~/core/id';
 import { useMutate } from '~/core/sync/use-mutate';
-import { useQueryEntity, useQueryProperty, useRelations, useValues } from '~/core/sync/use-store';
+import { useQueryEntity, useQueryProperty, useRelations } from '~/core/sync/use-store';
 import { SwitchableRenderableType } from '~/core/v2.types';
 
 import { Divider } from '~/design-system/divider';
@@ -19,12 +19,7 @@ import { PropertyTypeDropdown } from './property-type-dropdown';
 import { RelationsGroup as ReadableRelationsGroup } from './readable-entity-page';
 import { useEntityStoreInstance } from '~/core/state/entity-page-store/entity-store-provider';
 import { useName } from '~/core/state/entity-page-store/entity-store';
-import { mapPropertyType } from '~/core/utils/property-type-mapping';
-import { 
-  isPropertyUnpublished, 
-  constructPropertyDataType, 
-  getCurrentRenderableType 
-} from '~/core/utils/property-type-utils';
+import { Properties } from '~/core/utils/property';
 
 const typeOptions: Record<SwitchableRenderableType, string> = {
   TIME: 'Time',
@@ -47,9 +42,6 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
   const { id: entityId } = useEntityStoreInstance();
   const relations = useRelations({
     selector: r => r.fromEntity.id === entityId && r.spaceId === spaceId,
-  })
-  const values = useValues({
-    selector: v => v.entity.id === entityId && v.spaceId === spaceId,
   })
   const name = useName(entityId);
   
@@ -79,7 +71,7 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
            r.toEntity.id === SystemIds.PROPERTY
     );
     
-    return isPropertyUnpublished(propertyData, propertyTypeRelation);
+    return Properties.isUnpublished(propertyData, propertyTypeRelation);
   }, [propertyData, relations, entityId]);
 
   // Find renderableType relation
@@ -97,7 +89,7 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
 
 
   const propertyDataType = React.useMemo(() => {
-    return constructPropertyDataType(
+    return Properties.constructDataType(
       propertyData,
       renderableTypeEntity,
       renderableTypeRelation,
@@ -108,7 +100,7 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
 
   // Determine the current renderable type based on property data
   const currentRenderableType = React.useMemo(() => {
-    return getCurrentRenderableType(propertyDataType);
+    return Properties.getCurrentRenderableType(propertyDataType);
   }, [propertyDataType]);
 
   const handlePropertyTypeChange = React.useCallback(
@@ -117,13 +109,10 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
       if (!entityId || !spaceId) return;
 
       // Determine the base dataType and renderableType based on the selected type
-      let baseDataType: string;
-      let renderableTypeId: string | null = null;
-
       // Map property types to their base dataType and renderableType
-      const mapping = mapPropertyType(newType);
-      baseDataType = mapping.baseDataType;
-      renderableTypeId = mapping.renderableTypeId;
+      const mapping = Properties.mapPropertyType(newType);
+      const baseDataType = mapping.baseDataType;
+      const renderableTypeId = mapping.renderableTypeId;
 
 
       // Published properties can't change their base dataType
@@ -248,12 +237,6 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
       });
     }
   }, [propertyData, entityId, spaceId, storage, name, relations]);
-
-  // Debug logging
-  React.useEffect(() => {
-    if (propertyData) {
-    }
-  }, [entityId, propertyData, propertyDataType, currentRenderableType]);
 
   return (
     <div className="flex items-center gap-2 text-text">

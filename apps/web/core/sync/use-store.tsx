@@ -3,14 +3,12 @@ import { createAtom } from '@xstate/store';
 import { useSelector } from '@xstate/store/react';
 import { Effect } from 'effect';
 import equal from 'fast-deep-equal';
-import { SystemIds } from '@graphprotocol/grc-20';
 import * as React from 'react';
 
-import { DATA_TYPE_PROPERTY, RENDERABLE_TYPE_PROPERTY } from '../constants';
 import { getProperties, getProperty } from '../io/v2/queries';
 import { Values } from '../utils/value';
-import { reconstructPropertyFromStore } from '../utils/property-reconstruction';
-import { DataType, Property, Relation, Value } from '../v2.types';
+import { Properties } from '../utils/property';
+import { Property, Relation, Value } from '../v2.types';
 import { EntityQuery, WhereCondition } from './experimental_query-layer';
 import { E, mergeRelations } from './orm';
 import { GeoStore, reactiveRelations, reactiveValues } from './store';
@@ -241,7 +239,7 @@ export function useQueryProperty({ id, spaceId, enabled = true }: QueryEntityOpt
       }
 
       // Fall back to manual reconstruction for existing properties
-      return reconstructPropertyFromStore(id, getValues, getRelations);
+      return Properties.reconstructFromStore(id, getValues, getRelations);
     },
     equal
   );
@@ -291,7 +289,7 @@ export function useQueryProperties({ ids, enabled = true }: QueryPropertiesOptio
         }
 
         // Fall back to manual reconstruction for existing properties
-        const reconstructedProperty = reconstructPropertyFromStore(id, getValues, getRelations);
+        const reconstructedProperty = Properties.reconstructFromStore(id, getValues, getRelations);
         if (reconstructedProperty) {
           props.push(reconstructedProperty);
         }

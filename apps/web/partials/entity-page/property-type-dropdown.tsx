@@ -17,7 +17,7 @@ import { Relation } from '~/design-system/icons/relation';
 import { Text } from '~/design-system/icons/text';
 import { Url } from '~/design-system/icons/url';
 import { ColorName } from '~/design-system/theme/colors';
-import { typeToBaseDataType } from '~/core/utils/property-type-mapping';
+import { Properties } from '~/core/utils/property';
 
 interface Props {
   value?: SwitchableRenderableType;
@@ -62,7 +62,7 @@ export const PropertyTypeDropdown = ({ value, onChange, baseDataType }: Props) =
     
     // Filter options to only those with matching base dataType (published property)
     return (Object.keys(typeOptions) as SwitchableRenderableType[]).filter(
-      type => typeToBaseDataType[type] === baseDataType
+      type => Properties.typeToBaseDataType[type] === baseDataType
     );
   }, [baseDataType]);
 

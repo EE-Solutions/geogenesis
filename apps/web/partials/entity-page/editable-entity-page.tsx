@@ -1,7 +1,6 @@
 'use client';
 
 import { ContentIds, Id, Position, SystemIds } from '@graphprotocol/grc-20';
-import { RENDERABLE_TYPE_PROPERTY, DATA_TYPE_PROPERTY, GEO_LOCATION } from '~/core/constants';
 // import { Image } from '@graphprotocol/grc-20';
 import { useAtom } from 'jotai';
 
@@ -15,15 +14,11 @@ import { useMutate } from '~/core/sync/use-mutate';
 import { useQueryProperty, useRelations, useValues } from '~/core/sync/use-store';
 import { NavUtils, getImagePath } from '~/core/utils/utils';
 import {
-  NativeRenderableProperty,
   Property,
   Relation,
-  RelationRenderableProperty,
   RenderableProperty,
-  SwitchableRenderableType,
   Value,
   ValueOptions,
-  ValueRenderableProperty,
 } from '~/core/v2.types';
 
 import { AddTypeButton, SquareButton } from '~/design-system/button';
@@ -35,16 +30,12 @@ import { Graph } from '@graphprotocol/grc-20';
 import { GeoLocationPointFields } from '~/design-system/editable-fields/geo-location-field';
 import { NumberField } from '~/design-system/editable-fields/number-field';
 import { Create } from '~/design-system/icons/create';
-import { Trash } from '~/design-system/icons/trash';
 import { PrefetchLink as Link } from '~/design-system/prefetch-link';
 import { SelectEntity } from '~/design-system/select-entity';
 import { SelectEntityAsPopover } from '~/design-system/select-entity-dialog';
 import { Text } from '~/design-system/text';
 
-import { DateFormatDropdown } from './date-format-dropdown';
-import { NumberOptionsDropdown } from './number-options-dropdown';
 import { editorHasContentAtom } from '~/atoms';
-import { useEntityStoreInstance } from '~/core/state/entity-page-store/entity-store-provider';
 import { createPropertyCreationService } from '~/core/services/property-creation';
 
 function ShowablePanel({
@@ -306,23 +297,13 @@ export function RelationsGroup({ propertyId, id, spaceId }: RelationsGroupProps)
     selector: v => v.spaceId === spaceId,
   });
 
-  if (!property) {
-    return null;
-  }
-
-  const typeOfId = property.id;
-  const typeOfName = property.name;
-  const relationValueTypes = property.relationValueTypes;
-  const valueType = relationValueTypes?.[0];
-  const isEmpty = relations.length === 0;
-
   // For IMAGE properties, get the image URL from related image entities
   const imageRelation = relations.find(r => r.renderableType === 'IMAGE');
   const imageEntityId = imageRelation?.toEntity.id;
   
   // Find the image URL value (typically the first value with an ipfs:// URL)
   const imageSrc = React.useMemo(() => {
-    if (property.renderableType !== SystemIds.IMAGE || !imageEntityId) return undefined;
+    if (!property || property.renderableType !== SystemIds.IMAGE || !imageEntityId) return undefined;
     
     // Filter values for the specific image entity
     const imageEntityValues = allValues.filter(v => v.entity.id === imageEntityId);
@@ -332,7 +313,17 @@ export function RelationsGroup({ propertyId, id, spaceId }: RelationsGroupProps)
     );
     
     return imageUrlValue?.value;
-  }, [property.renderableType, imageEntityId, allValues]);
+  }, [property, imageEntityId, allValues]);
+
+  if (!property) {
+    return null;
+  }
+
+  const typeOfId = property.id;
+  const typeOfName = property.name;
+  const relationValueTypes = property.relationValueTypes;
+  const valueType = relationValueTypes?.[0];
+  const isEmpty = relations.length === 0;
 
   if (isEmpty) {
     return (
