@@ -79,9 +79,6 @@ function createMutator(store: GeoStore): Mutator {
       },
     },
     properties: {
-      setDataType: (entityId: string, dataType: DataType) => {
-        store.setDataType(entityId, dataType);
-      },
       create: ({ entityId, spaceId, name, dataType }) => {
         // Set the name value
         const nameValue: Value = {
@@ -127,7 +124,6 @@ function createMutator(store: GeoStore): Mutator {
 
         store.setValue(nameValue);
         store.setValue(dataTypeValue);
-        store.setDataType(entityId, dataType);
       },
     },
     values: {

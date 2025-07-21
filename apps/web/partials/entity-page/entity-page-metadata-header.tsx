@@ -153,8 +153,6 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
           spaceId,
           value: baseDataType,
         });
-        // Update the registered dataType in the store
-        storage.properties.setDataType(entityId, baseDataType);
       } else if (!propertyData) {
         // If no dataType value exists and no propertyData, create the dataType value
         storage.values.set({
@@ -175,8 +173,6 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
           spaceId,
           value: baseDataType,
         });
-        // Register the dataType in the store
-        storage.properties.setDataType(entityId, baseDataType);
       }
 
       // Handle the renderableType relation
