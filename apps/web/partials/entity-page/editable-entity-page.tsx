@@ -16,7 +16,6 @@ import { NavUtils, getImagePath } from '~/core/utils/utils';
 import {
   Property,
   Relation,
-  RenderableProperty,
   Value,
   ValueOptions,
 } from '~/core/v2.types';
@@ -86,7 +85,6 @@ export function EditableEntityPage({ id, spaceId }: Props) {
   const renderedProperties = useEditableProperties(id, spaceId);
   const propertiesEntries = Object.entries(renderedProperties);
 
-  const { storage } = useMutate();
   const { createProperty, addPropertyToEntity } = useCreateProperty(spaceId);
 
   const name = useName(id, spaceId);
@@ -222,49 +220,6 @@ export function EditableEntityPage({ id, spaceId }: Props) {
   );
 }
 
-function EditableAttribute({ renderable, onChange }: { renderable: RenderableProperty; onChange: () => void }) {
-  const { spaceId } = useEntityStoreInstance();
-  const { storage } = useMutate();
-  const { createProperty } = useCreateProperty(spaceId);
-
-  if (renderable.propertyId === '') {
-    return (
-      <>
-        <SelectEntity
-          placeholder="Add property..."
-          spaceId={spaceId}
-          relationValueTypes={[{ id: SystemIds.PROPERTY, name: 'Property' }]}
-          onCreateEntity={result => {
-            const selectedPropertyType = result.selectedPropertyType || 'TEXT';
-            
-            const createdPropertyId = createProperty({
-              name: result.name || '',
-              propertyType: selectedPropertyType,
-              verified: result.verified,
-              space: result.space,
-            });
-
-            // Link the created property to this renderable
-            // @TODO(migration): Update renderable to use the created property
-            console.log('Created property with ID:', createdPropertyId);
-          }}
-          onDone={result => {
-            onChange();
-
-            // @TODO(migration): Change functionality based on property data type
-
-            // .send({
-            //   type: 'UPSERT_PROPERTY',
-            //   payload: { renderable, propertyId: result.id, propertyName: result.name },
-            // });
-          }}
-          withSelectSpace={false}
-          advanced={false}
-        />
-      </>
-    );
-  }
-}
 
 function RenderedProperty({ property, spaceId }: { property: Property; spaceId: string }) {
   return (
@@ -294,9 +249,6 @@ export function RelationsGroup({ propertyId, id, spaceId }: RelationsGroupProps)
     selector: r => r.fromEntity.id === id && r.spaceId === spaceId && r.type.id === propertyId,
   });
 
-  const values = useValues({
-    selector: v => v.entity.id === id && v.spaceId === spaceId && v.property.id === propertyId,
-  });
 
   // Always call useValues hook to maintain hook order consistency (must be before early returns)
   const allValues = useValues({
@@ -734,7 +686,7 @@ function RenderedValue({ entityId, propertyId, spaceId }: { entityId: string; pr
         <DateField
           key={propertyId}
           // format={renderable.options?.format}
-          onBlur={({ value, format }) => {
+          onBlur={({ value }) => {
             onChange(value);
           }}
           isEditing={true}

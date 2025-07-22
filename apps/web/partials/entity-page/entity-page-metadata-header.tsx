@@ -211,7 +211,7 @@ export function EntityPageMetadataHeader({ id, spaceId }: EntityPageMetadataHead
         }
       }
     },
-    [entityId, spaceId, storage, propertyData, relations, currentRenderableType, isUnpublishedProperty, name]
+    [entityId, spaceId, storage, propertyData, relations, isUnpublishedProperty, name]
   );
 
   // Create property data when Property type is added
