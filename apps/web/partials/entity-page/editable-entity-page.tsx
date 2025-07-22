@@ -36,7 +36,7 @@ import { SelectEntityAsPopover } from '~/design-system/select-entity-dialog';
 import { Text } from '~/design-system/text';
 
 import { editorHasContentAtom } from '~/atoms';
-import { createPropertyCreationService } from '~/core/services/property-creation';
+import { useCreateProperty } from '~/core/hooks/use-create-property';
 
 function ShowablePanel({
   name,
@@ -87,6 +87,7 @@ export function EditableEntityPage({ id, spaceId }: Props) {
   const propertiesEntries = Object.entries(renderedProperties);
 
   const { storage } = useMutate();
+  const { createProperty, addPropertyToEntity } = useCreateProperty(spaceId);
 
   const name = useName(id, spaceId);
 
@@ -188,25 +189,28 @@ export function EditableEntityPage({ id, spaceId }: Props) {
             relationValueTypes={[{ id: SystemIds.PROPERTY, name: 'Property' }]}
             onCreateEntity={result => {
               const selectedPropertyType = result.selectedPropertyType || 'TEXT';
-              const propertyCreationService = createPropertyCreationService(storage);
               
-              propertyCreationService.createProperty({
-                entityId: result.id,
-                spaceId,
+              const createdPropertyId = createProperty({
                 name: result.name || '',
                 propertyType: selectedPropertyType,
                 verified: result.verified,
                 space: result.space,
               });
+
+              // Immediately add the property to the entity
+              addPropertyToEntity({
+                entityId: id,
+                propertyId: createdPropertyId,
+                propertyName: result.name || '',
+                entityName: name || undefined,
+              });
             }}
             onDone={result => {
               if (result) {
-                const propertyCreationService = createPropertyCreationService(storage);
-                propertyCreationService.addPropertyToEntity({
+                addPropertyToEntity({
                   entityId: id,
                   propertyId: result.id,
                   propertyName: result.name,
-                  spaceId,
                   entityName: name || undefined,
                 });
               }
@@ -221,6 +225,7 @@ export function EditableEntityPage({ id, spaceId }: Props) {
 function EditableAttribute({ renderable, onChange }: { renderable: RenderableProperty; onChange: () => void }) {
   const { spaceId } = useEntityStoreInstance();
   const { storage } = useMutate();
+  const { createProperty } = useCreateProperty(spaceId);
 
   if (renderable.propertyId === '') {
     return (
@@ -231,16 +236,17 @@ function EditableAttribute({ renderable, onChange }: { renderable: RenderablePro
           relationValueTypes={[{ id: SystemIds.PROPERTY, name: 'Property' }]}
           onCreateEntity={result => {
             const selectedPropertyType = result.selectedPropertyType || 'TEXT';
-            const propertyCreationService = createPropertyCreationService(storage);
             
-            propertyCreationService.createProperty({
-              entityId: result.id,
-              spaceId,
+            const createdPropertyId = createProperty({
               name: result.name || '',
               propertyType: selectedPropertyType,
               verified: result.verified,
               space: result.space,
             });
+
+            // Link the created property to this renderable
+            // @TODO(migration): Update renderable to use the created property
+            console.log('Created property with ID:', createdPropertyId);
           }}
           onDone={result => {
             onChange();

@@ -160,6 +160,11 @@ export function mapRenderableTypeToSwitchable(
   renderableTypeId: string,
   fallbackDataType: string
 ): SwitchableRenderableType {
+  // Handle null/undefined renderableTypeName
+  if (!renderableTypeName) {
+    return fallbackDataType as SwitchableRenderableType;
+  }
+  
   // Normalize the name for comparison
   const normalizedName = renderableTypeName.toLowerCase().replace(/[\s-_]/g, '');
   
