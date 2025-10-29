@@ -200,6 +200,12 @@ function SortableRelationChip({ relation, spaceId }: SortableRelationChipProps) 
           relationEntityId={relation.entityId}
           spaceId={relation.toSpaceId}
           verified={relation.verified}
+          onDone={result => {
+            storage.relations.update(relation, draft => {
+              draft.toSpaceId = result.space;
+              draft.verified = result.verified;
+            });
+          }}
         >
           {relation.toEntity.name}
         </LinkableRelationChip>
