@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr view:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(npx tsc:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.pinata.cloud)",
+      "Bash(cat:*)",
+      "WebFetch(domain:tiptap.dev)",
+      "Bash(pnpm info:*)",
+      "Bash(pnpm next lint:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
