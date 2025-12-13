@@ -13,10 +13,10 @@ import { NavUtils, sortRelations } from '~/core/utils/utils';
 import { EmptyErrorComponent } from '~/design-system/empty-error-component';
 import { Spacer } from '~/design-system/spacer';
 
+import { CommentSection } from '~/partials/comments/comments-section';
 import { Editor } from '~/partials/editor/editor';
 import { AutomaticModeToggle } from '~/partials/entity-page/automatic-mode-toggle';
 import { BacklinksServerContainer } from '~/partials/entity-page/backlinks-server-container';
-import { EditableHeading } from '~/partials/entity-page/editable-entity-header';
 import { EntityPageContentContainer } from '~/partials/entity-page/entity-page-content-container';
 import { EntityPageCover } from '~/partials/entity-page/entity-page-cover';
 import { EntityTabs } from '~/partials/entity-page/entity-tabs';
@@ -90,6 +90,9 @@ export default async function DefaultEntityPage({
               <BacklinksServerContainer entityId={params.entityId} />
             </React.Suspense>
           </ErrorBoundary>
+          <Spacer height={40} />
+          {/* Mock comment amount */}
+          <CommentSection commentAmounts={3} />
         </EntityPageContentContainer>
       </EditorProvider>
     </EntityStoreProvider>

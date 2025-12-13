@@ -67,3 +67,14 @@ export const SUGGESTED_TIME_FORMATS = [
     label: 'July 4, 2024',
   },
 ];
+
+export const COMMENT_FILTERS = [
+  {
+    title: 'Most recent',
+    options: ['Most recent', 'Oldest'],
+  },
+  {
+    title: 'All',
+    options: ['All', 'Editors replies'],
+  },
+];
