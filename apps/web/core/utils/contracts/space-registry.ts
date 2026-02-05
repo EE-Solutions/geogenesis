@@ -26,6 +26,10 @@ export const GOVERNANCE_ACTIONS = {
   MEMBERSHIP_REQUESTED: '0xe048e0dc301b1bb4e2446608d8858ecf95c326d7241c9943b14f647fd3a78d9a' as Hex,
   /** keccak256('GOVERNANCE.PROPOSAL_CREATED') - creates a slow-path proposal */
   PROPOSAL_CREATED: '0xcf4356ed126c00d2e547ace2f69991a972d322b45371d61ce5478b1cb9acb4c2' as Hex,
+  /** keccak256('GOVERNANCE.PROPOSAL_VOTED') - votes on a proposal */
+  PROPOSAL_VOTED: '0x4ebf5f29676cedf7e2e4d346a8433289278f95a9fda73691dc1ce24574d5819e' as Hex,
+  /** keccak256('GOVERNANCE.PROPOSAL_EXECUTED') - executes a passed proposal */
+  PROPOSAL_EXECUTED: '0x62a60c0a9681612871e0dafa0f24bb0c83cbdde8be5a6299979c88d382369e96' as Hex,
 } as const;
 
 /**
@@ -46,15 +50,29 @@ export const VOTING_MODE = {
  */
 export const DAOSpaceAbi = [
   {
-    inputs: [{ internalType: 'bytes16', name: '_memberSpaceId', type: 'bytes16' }],
+    inputs: [{ internalType: 'bytes16', name: '_newMemberSpaceId', type: 'bytes16' }],
     name: 'addMember',
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function',
   },
   {
-    inputs: [{ internalType: 'bytes16', name: '_editorSpaceId', type: 'bytes16' }],
+    inputs: [{ internalType: 'bytes16', name: '_oldMemberSpaceId', type: 'bytes16' }],
+    name: 'removeMember',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'bytes16', name: '_newEditorSpaceId', type: 'bytes16' }],
     name: 'addEditor',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'bytes16', name: '_oldEditorSpaceId', type: 'bytes16' }],
+    name: 'removeEditor',
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function',
