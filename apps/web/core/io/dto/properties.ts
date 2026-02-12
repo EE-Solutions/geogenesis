@@ -7,6 +7,7 @@ import { RemoteProperty } from '../schema';
 
 export function PropertyDto(queryResult: RemoteProperty): Property {
   const mappedDataType = getAppDataTypeFromRemoteDataType(queryResult.dataTypeName);
+  const renderableTypeId = queryResult.renderableTypeId ?? null;
 
   return {
     id: queryResult.id,
@@ -14,9 +15,9 @@ export function PropertyDto(queryResult: RemoteProperty): Property {
     dataType: mappedDataType,
     // @TODO(grc-20-v2-migration): Remove legacy fields
     relationValueTypes: [],
-    renderableType: null,
-    renderableTypeStrict: undefined,
-    format: null,
+    renderableType: renderableTypeId,
+    renderableTypeStrict: getStrictRenderableType(renderableTypeId),
+    format: queryResult.format ?? null,
     unit: null,
     isDataTypeEditable: false, // Remote properties are not editable
   };

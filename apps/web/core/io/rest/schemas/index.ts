@@ -1,7 +1,6 @@
-/**
- * Centralized API schema definitions.
- *
- * Import schemas from here to ensure consistency across all fetch functions.
- */
-export * from './proposal';
+export * from './diff-shared';
+export * from './entity-history';
+export * from './entity-snapshot';
 export * from './profile';
+export * from './proposal';
+export * from './proposal-diff';

@@ -29,6 +29,23 @@ export const VIDEO_ACCEPT = VALID_VIDEO_TYPES.join(',');
 export const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024; // 100MB
 
 export const DATA_TYPE_PROPERTY = '6d29d57849bb4959baf72cc696b1671a';
+
+/** DataType → entity ID for Data Type relations. */
+export const DATA_TYPE_ENTITY_IDS: Record<string, string> = {
+  TEXT: '9edb6fcce4544aa5861139d7f024c010',
+  RELATION: '4b6d9fc1fbfe474c861c83398e1b50d9',
+  BOOL: '7aa4792eeacd41868272fa7fc18298ac',
+  INT64: '149fd752d9d04f80820d1d942eea7841',
+  FLOAT64: '9b597aaec31c46c88565a370da0c2a65',
+  DECIMAL: 'a3288c22a0564f6fb409fbcccb2c118c',
+  BYTES: '66b433247667496899b48a89bd1de22b',
+  DATE: 'e661d10292794449a22367dbae1be05a',
+  TIME: 'ad75102b03c04d59903813ede9482742',
+  DATETIME: '167664f668f840e1976b20bd16ed8d47',
+  SCHEDULE: 'caf4dd12ba4844b99171aff6c1313b50',
+  POINT: 'df250d17e364413d97792ddaae841e34',
+  EMBEDDING: 'f732849378ba4577a33fac5f1c964f18',
+};
 export const VALUE_TYPE_PROPERTY = 'ee26ef23f7f14eb6b7423b0fa38c1fd8';
 export const IS_TYPE_PROPERTY = 'd2c1a10114e3464a8272f4e75b0f1407';
 export const ROOT_SPACE = 'a19c345ab9866679b001d7d2138d88a1';
@@ -44,6 +61,7 @@ export const MAPBOX_PROPERTY = 'f9d8ff4e52f14e73b8f2bbb31dce5465';
 export const UNIT_PROPERTY = '11b0658120d341eab5702ef4ee0a4ffd';
 export const DEFAULT_TIME_FORMAT = 'MMMM d, yyy';
 export const DEFAULT_NUMBER_FORMAT = ',?';
+export const DEFAULT_URL_TEMPLATE = '';
 
 export const UNICODE_LINK = 'https://unicode-org.github.io/icu/userguide/format_parse/numbers/skeletons.html';
 export const GRC_20_SPECIFICATION_LINK =
@@ -84,5 +102,48 @@ export const SUGGESTED_TIME_FORMATS = [
   {
     format: DEFAULT_TIME_FORMAT,
     label: 'July 4, 2024',
+  },
+];
+
+export const SUGGESTED_URL_FORMATS = [
+  {
+    format: 'https://x.com/{value}',
+    label: 'Twitter',
+  },
+  {
+    format: 'https://github.com/{value}',
+    label: 'GitHub',
+  },
+  {
+    format: 'https://instagram.com/{value}',
+    label: 'Instagram',
+  },
+  {
+    format: 'https://www.linkedin.com/in/{value}',
+    label: 'LinkedIn',
+  },
+  {
+    format: 'https://www.youtube.com/@{value}',
+    label: 'YouTube',
+  },
+  {
+    format: 'https://etherscan.io/address/{value}',
+    label: 'Etherscan',
+  },
+  {
+    format: 'https://t.me/{value}',
+    label: 'Telegram',
+  },
+  {
+    format: 'https://discord.gg/{value}',
+    label: 'Discord',
+  },
+  {
+    format: 'https://open.spotify.com/artist/{value}',
+    label: 'Spotify Artist',
+  },
+  {
+    format: 'https://en.wikipedia.org/wiki/{value}',
+    label: 'Wikipedia',
   },
 ];

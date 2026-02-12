@@ -10,6 +10,13 @@ export type OmitStrict<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
 // ==============================================================================
 
 export type Profile = {
+  /**
+   * The user's Person Entity ID when available (dashless UUID from the front page
+   * entity of their personal space), otherwise falls back to spaceId or wallet address.
+   *
+   * Use `IdUtils.isValid()` before passing this as an `author` to the geo-sdk, since
+   * the fallback values (wallet addresses) are not valid entity IDs.
+   */
   id: string;
   /** The user's personal space ID (bytes16 hex without 0x prefix) */
   spaceId: string;
@@ -87,6 +94,10 @@ export type LegacyDataType = 'TEXT' | 'NUMBER' | 'CHECKBOX' | 'TIME' | 'POINT' |
  */
 export const LEGACY_DATA_TYPE_MAPPING: Partial<Record<string, DataType>> = {
   BOOLEAN: 'BOOL',
+  INTEGER: 'INT64',
+  FLOAT: 'FLOAT64',
+  CHECKBOX: 'BOOL',
+  PLACE: 'RELATION',
 } as const;
 
 // ==============================================================================
@@ -120,7 +131,8 @@ export type FlattenedRenderType =
   | 'RELATION'
   | 'IMAGE'
   | 'VIDEO'
-  | 'PLACE';
+  | 'PLACE'
+  | 'ADDRESS';
 
 // The types of renderables don't map 1:1 to the triple value types. We might
 // also render relations with a specific type, e.g., an Image entity or a
@@ -140,7 +152,8 @@ export type SwitchableRenderableType =
   | 'DECIMAL'
   | 'POINT'
   | 'GEO_LOCATION'
-  | 'PLACE';
+  | 'PLACE'
+  | 'ADDRESS';
 
 /**
  * Human-readable labels for switchable renderable types
@@ -161,6 +174,7 @@ export const SWITCHABLE_RENDERABLE_TYPE_LABELS: Record<SwitchableRenderableType,
   POINT: 'Point',
   GEO_LOCATION: 'Geo Location',
   PLACE: 'Place',
+  ADDRESS: 'Address',
 };
 
 // ==============================================================================

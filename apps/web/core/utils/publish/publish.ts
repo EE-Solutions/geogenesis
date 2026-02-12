@@ -1,11 +1,36 @@
 import { Graph, Op, type PropertyValueParam } from '@geoprotocol/geo-sdk';
+import { Effect } from 'effect';
 
 import { Relation, Value } from '~/core/types';
 
+import { PrepareOpsError } from '../../errors';
+
 /**
  * Converts local values and relations to GRC-20 Ops for publishing.
+ *
+ * Returns an Effect so that SDK validation errors (e.g. invalid IDs from
+ * assertValid) are captured with full context instead of throwing bare
+ * errors that surface as React render crashes with no logging.
  */
-export function prepareLocalDataForPublishing(values: Value[], relations: Relation[], spaceId: string): Op[] {
+export function prepareLocalDataForPublishing(
+  values: Value[],
+  relations: Relation[],
+  spaceId: string
+): Effect.Effect<Op[], PrepareOpsError> {
+  return Effect.try({
+    try: () => prepareOps(values, relations, spaceId),
+    catch: error => {
+      console.error('[PUBLISH] prepareLocalDataForPublishing failed:', error, {
+        values,
+        relations,
+        spaceId,
+      });
+      return new PrepareOpsError('Failed to prepare ops for publishing', { cause: error });
+    },
+  });
+}
+
+function prepareOps(values: Value[], relations: Relation[], spaceId: string): Op[] {
   const validValues = values.filter(
     v =>
       v.spaceId === spaceId && !v.hasBeenPublished && v.property.id !== '' && v.entity.id !== '' && v.isLocal === true
@@ -23,6 +48,7 @@ export function prepareLocalDataForPublishing(values: Value[], relations: Relati
         toEntity: r.toEntity.id,
         type: r.type.id,
         id: r.id,
+        entityId: r.entityId,
         position: r.position ?? undefined,
         ...(r.toSpaceId && { toSpace: r.toSpaceId }),
       });
@@ -80,19 +106,25 @@ function convertToSdkValue(value: Value): PropertyValueParam {
         ...(value.options?.language && { language: value.options.language }),
       } as PropertyValueParam;
     case 'BOOL':
-      return { property, type: 'bool', value: val === '1' || val === 'true' } as PropertyValueParam;
+      return { property, type: 'boolean', value: val === '1' || val === 'true' } as PropertyValueParam;
     case 'INT64':
       return {
         property,
-        type: 'int64',
+        type: 'integer',
         value: parseInt(val, 10) || 0,
         ...(value.options?.unit && { unit: value.options.unit }),
-      } as unknown as PropertyValueParam;
+      } as PropertyValueParam;
     case 'FLOAT64':
+      return {
+        property,
+        type: 'float',
+        value: parseFloat(val) || 0,
+        ...(value.options?.unit && { unit: value.options.unit }),
+      } as PropertyValueParam;
     case 'DECIMAL':
       return {
         property,
-        type: 'float64',
+        type: 'float',
         value: parseFloat(val) || 0,
         ...(value.options?.unit && { unit: value.options.unit }),
       } as PropertyValueParam;

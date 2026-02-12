@@ -1,15 +1,44 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import * as React from 'react';
 
-import { Change } from '../utils/change';
+import { reactiveRelations, reactiveValues } from '../sync/store';
+import { Diff, type EntityDiff } from '../utils/diff';
 
-export const useLocalChanges = (spaceId?: string) => {
-  const { data, isLoading } = useQuery({
-    queryKey: ['local-changes', spaceId],
-    queryFn: () => Change.fromLocal(spaceId),
-    staleTime: 0,
-  });
+/** Computes local diffs for a space. Bump `version` to force a re-compute. */
+export const useLocalChanges = (spaceId?: string, version = 0): readonly [EntityDiff[], boolean] => {
+  const [diffs, setDiffs] = React.useState<EntityDiff[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
 
-  return [data, isLoading] as const;
+  React.useEffect(() => {
+    if (!spaceId) {
+      setDiffs([]);
+      setIsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+
+    // isLocal === true filters out hydrated server data (which has isLocal undefined)
+    const localValues = reactiveValues
+      .get()
+      .filter(v => v.spaceId === spaceId && v.isLocal === true && !v.hasBeenPublished);
+    const localRelations = reactiveRelations
+      .get()
+      .filter(r => r.spaceId === spaceId && r.isLocal === true && !r.hasBeenPublished);
+
+    Diff.fromLocal(spaceId, localValues, localRelations).then(result => {
+      if (!cancelled) {
+        setDiffs(result);
+        setIsLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [spaceId, version]);
+
+  return [diffs, isLoading] as const;
 };

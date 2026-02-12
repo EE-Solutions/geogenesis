@@ -30,7 +30,7 @@ const textareaStyles = cva(
       variant: {
         mainPage: 'mb-[-1px] text-mainPage',
         body: 'mb-[-6.5px] text-body',
-        tableCell: 'mb-[-3.5px] text-tableCell',
+        tableCell: 'mt-[-1.25px] mb-[-2.25px] text-tableCell',
         tableProperty: '!text-tableProperty !text-grey-04',
         smallTitle: 'text-smallTitle',
       },
@@ -52,7 +52,7 @@ type TableStringFieldProps = {
 export function TableStringField({ variant = 'tableCell', ...props }: TableStringFieldProps) {
   const { value: localValue, onChange: setLocalValue } = useOptimisticValueWithSideEffect({
     callback: props.onChange,
-    delay: 1000,
+    delay: 300,
     initialValue: props.value || '',
   });
 
@@ -86,7 +86,7 @@ export function PageStringField({ shouldDebounce, onChange, onEnterKey, ...props
     flush,
   } = useOptimisticValueWithSideEffect({
     callback: onChange,
-    delay: 1500,
+    delay: 300,
     initialValue: props.value || '',
   });
 

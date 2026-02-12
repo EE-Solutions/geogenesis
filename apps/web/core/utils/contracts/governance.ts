@@ -43,10 +43,10 @@ export interface ProposalAction {
 }
 
 /**
- * Encodes the data payload for a PROPOSAL_CREATED action (slow path).
+ * Encodes the data payload for a PROPOSAL_CREATED action.
  *
  * @param proposalId - bytes16 proposal ID
- * @param votingMode - 0 for FAST, 1 for SLOW
+ * @param votingMode - 0 for SLOW, 1 for FAST (matches Solidity enum VotingMode { Slow, Fast })
  * @param actions - Array of actions to execute if proposal passes
  * @returns Encoded bytes for use in SpaceRegistry.enter()
  */
@@ -95,6 +95,15 @@ export function encodeProposalVotedData(proposalId: Hex, voteOption: VoteOptionT
 export function encodeProposalExecutedData(proposalId: Hex): Hex {
   return encodeAbiParameters([{ name: 'proposalId', type: 'bytes16' }], [proposalId]);
 }
+
+/**
+ * The types of subspace relationships that can be set.
+ *
+ * - Verified: The parent space has verified the subspace
+ * - Related: The parent space considers the subspace related
+ * - Subtopic: The subspace is categorized under a specific topic entity (identified by UUID)
+ */
+export type SubspaceRelationType = 'verified' | 'related' | 'subtopic';
 
 /**
  * Pads a bytes16 hex string (32 hex chars) to bytes32 (64 hex chars) for use as topic.
