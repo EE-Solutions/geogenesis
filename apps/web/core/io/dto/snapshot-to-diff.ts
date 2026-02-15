@@ -16,21 +16,22 @@ import type {
   ApiBlockSnapshot,
 } from '../rest';
 
-const { TEXT_BLOCK, IMAGE_BLOCK, DATA_BLOCK, BLOCKS, TYPES_PROPERTY, NAME_PROPERTY, MARKDOWN_CONTENT, IMAGE_URL_PROPERTY } =
+const { TEXT_BLOCK, IMAGE_BLOCK, IMAGE_TYPE, DATA_BLOCK, VIDEO_TYPE, VIDEO_BLOCK, BLOCKS, TYPES_PROPERTY, NAME_PROPERTY, MARKDOWN_CONTENT, IMAGE_URL_PROPERTY } =
   SystemIds;
 
 /**
  * Determine block type from a TYPES_PROPERTY relation.
  * Shared logic with `detectBlockType` in diff.ts, but operates on raw API relation shapes.
  */
-function classifyBlockType(typeEntityId: string): 'textBlock' | 'imageBlock' | 'dataBlock' | null {
+function classifyBlockType(typeEntityId: string): 'textBlock' | 'imageBlock' | 'videoBlock' | 'dataBlock' | null {
   if (typeEntityId === TEXT_BLOCK) return 'textBlock';
-  if (typeEntityId === IMAGE_BLOCK) return 'imageBlock';
+  if (typeEntityId === IMAGE_BLOCK || typeEntityId === IMAGE_TYPE) return 'imageBlock';
+  if (typeEntityId === VIDEO_TYPE || typeEntityId === VIDEO_BLOCK) return 'videoBlock';
   if (typeEntityId === DATA_BLOCK) return 'dataBlock';
   return null;
 }
 
-function getBlockTypeFromRelations(relations: readonly ApiVersionedRelation[]): 'textBlock' | 'imageBlock' | 'dataBlock' {
+function getBlockTypeFromRelations(relations: readonly ApiVersionedRelation[]): 'textBlock' | 'imageBlock' | 'videoBlock' | 'dataBlock' {
   for (const rel of relations) {
     if (rel.typeId === TYPES_PROPERTY) {
       const blockType = classifyBlockType(rel.toEntityId);
@@ -49,9 +50,9 @@ function getBlockTypeFromRelations(relations: readonly ApiVersionedRelation[]): 
  */
 function serializeSnapshotValue(v: ApiVersionedValue): { type: string; value: string | null } {
   if (v.text !== undefined && v.text !== null) return { type: 'TEXT', value: v.text };
-  if (v.boolean !== undefined && v.boolean !== null) return { type: 'BOOL', value: String(v.boolean) };
-  if (v.integer !== undefined && v.integer !== null) return { type: 'INT64', value: String(v.integer) };
-  if (v.float !== undefined && v.float !== null) return { type: 'FLOAT64', value: String(v.float) };
+  if (v.boolean !== undefined && v.boolean !== null) return { type: 'BOOLEAN', value: String(v.boolean) };
+  if (v.integer !== undefined && v.integer !== null) return { type: 'INTEGER', value: String(v.integer) };
+  if (v.float !== undefined && v.float !== null) return { type: 'FLOAT', value: String(v.float) };
   if (v.decimal !== undefined && v.decimal !== null) return { type: 'DECIMAL', value: v.decimal };
   if (v.bytes !== undefined && v.bytes !== null) return { type: 'BYTES', value: v.bytes };
   if (v.date !== undefined && v.date !== null) return { type: 'DATE', value: v.date };
@@ -116,6 +117,15 @@ function snapshotBlockToChange(block: ApiBlockSnapshot): BlockChange {
       };
     }
     case 'imageBlock': {
+      const url = block.values.find(v => v.propertyId === IMAGE_URL_PROPERTY)?.text ?? null;
+      return {
+        id: block.id,
+        type: 'imageBlock',
+        before: null,
+        after: url,
+      };
+    }
+    case 'videoBlock': {
       const url = block.values.find(v => v.propertyId === IMAGE_URL_PROPERTY)?.text ?? null;
       return {
         id: block.id,

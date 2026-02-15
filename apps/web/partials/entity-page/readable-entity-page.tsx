@@ -232,7 +232,7 @@ export function RelationsGroup({
             }
 
             return (
-              <div key={`relation-${relationId}-${linkedEntityId}`} className="mt-1">
+              <div key={`relation-${relationId}-${linkedEntityId}`} className={isMetadataHeader ? '' : 'mt-1'}>
                 <LinkableRelationChip
                   isEditing={false}
                   currentSpaceId={spaceId}
@@ -375,8 +375,8 @@ function RenderedValue({
         </div>
       );
     }
-    case 'INT64':
-    case 'FLOAT64':
+    case 'INTEGER':
+    case 'FLOAT':
     case 'DECIMAL':
       return (
         <ReadableNumberField
@@ -386,7 +386,7 @@ function RenderedValue({
           unitId={options?.unit ?? undefined}
         />
       );
-    case 'BOOL': {
+    case 'BOOLEAN': {
       const checked = getChecked(value);
 
       return <Checkbox key={`checkbox-${propertyId}-${value}`} checked={checked} />;

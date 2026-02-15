@@ -29,7 +29,6 @@ import { IconButton } from '~/design-system/button';
 import { NativeGeoImage } from '~/design-system/geo-image';
 import { CheckCloseSmall } from '~/design-system/icons/check-close-small';
 import { ChevronDownSmall } from '~/design-system/icons/chevron-down-small';
-import { TopRanked } from '~/design-system/icons/top-ranked';
 import { Input } from '~/design-system/input';
 import { Select } from '~/design-system/select';
 import { Tag } from '~/design-system/tag';
@@ -105,9 +104,13 @@ export const SelectEntity = ({
   const [result, setResult] = useState<SearchResult | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
 
-  const [allowedTypes, setAllowedTypes] = useState<NonNullable<Property['relationValueTypes']>>(
-    () => relationValueTypes ?? []
-  );
+  const [removedTypeIds, setRemovedTypeIds] = useState<Set<string>>(new Set());
+
+  const allowedTypes = React.useMemo(() => {
+    const base = relationValueTypes ?? [];
+    if (removedTypeIds.size === 0) return base;
+    return base.filter(t => !removedTypeIds.has(t.id));
+  }, [relationValueTypes, removedTypeIds]);
 
   const [isShowingAdvanced, setIsShowingAdvanced] = useState<boolean>(false);
   const [isAddingFilter, setIsAddingFilter] = useState<boolean>(false);
@@ -328,7 +331,7 @@ export const SelectEntity = ({
                                           filterType="Type"
                                           name={allowedType.name ?? ''}
                                           onDelete={() =>
-                                            setAllowedTypes([...allowedTypes.filter(r => r.id !== allowedType.id)])
+                                            setRemovedTypeIds(prev => new Set([...prev, allowedType.id]))
                                           }
                                         />
                                       );
@@ -448,22 +451,16 @@ export const SelectEntity = ({
                                   )}
                                   <div className="max-w-full truncate text-resultTitle text-text">{result.name}</div>
                                   <div className="mt-1.5 flex items-center gap-1.5">
-                                    {withSelectSpace && (
+                                    {withSelectSpace && (result.spaces ?? []).length > 0 && (
                                       <div className="flex shrink-0 items-center gap-1">
                                         <span className="inline-flex size-[12px] items-center justify-center rounded-sm border border-grey-04">
-                                          {(result.spaces ?? []).length > 0 ? (
-                                            <>
-                                              <NativeGeoImage
-                                                value={result.spaces[0].image}
-                                                alt=""
-                                                className="h-full w-full object-cover"
-                                              />
-                                            </>
-                                          ) : (
-                                            <TopRanked color="grey-04" />
-                                          )}
+                                          <NativeGeoImage
+                                            value={result.spaces[0].image}
+                                            alt=""
+                                            className="h-full w-full object-cover"
+                                          />
                                         </span>
-                                        <span className="text-[0.875rem] text-text">Top-ranked</span>
+                                        <span className="text-[0.875rem] text-text">{result.spaces[0].name}</span>
                                       </div>
                                     )}
                                     {result.types.length > 0 && (
@@ -709,7 +706,8 @@ const SpaceFilterInput = ({ onSelect }: SpaceFilterInputProps) => {
   const debouncedQuery = useDebouncedValue(query, 100);
   const { spaces } = useSpaces();
 
-  const results = spaces.filter(s => s.entity?.name?.toLowerCase().startsWith(debouncedQuery.toLowerCase()));
+  const namedSpaces = spaces.filter(s => s.entity?.name?.trim());
+  const results = namedSpaces.filter(s => s.entity?.name?.toLowerCase().startsWith(debouncedQuery.toLowerCase()));
 
   const onSelectSpace = (space: Space) => {
     onQueryChange('');

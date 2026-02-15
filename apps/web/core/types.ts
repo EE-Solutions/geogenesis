@@ -69,10 +69,10 @@ export type TabEntity = {
 
 export type DataType =
   | 'TEXT'
-  | 'INT64'
-  | 'FLOAT64'
+  | 'INTEGER'
+  | 'FLOAT'
   | 'DECIMAL'
-  | 'BOOL'
+  | 'BOOLEAN'
   | 'DATE'
   | 'DATETIME'
   | 'TIME'
@@ -81,24 +81,6 @@ export type DataType =
   | 'BYTES'
   | 'SCHEDULE'
   | 'EMBEDDING';
-
-// Legacy type aliases for backwards compatibility during migration
-export type LegacyDataType = 'TEXT' | 'NUMBER' | 'CHECKBOX' | 'TIME' | 'POINT' | 'RELATION';
-
-/**
- * Maps legacy GRC-20 data type names from older API responses to current types.
- *
- * Background: Some older data in the knowledge graph uses 'BOOLEAN' as the data type
- * string, but GRC-20 standardized on 'BOOL'. This mapping ensures backwards
- * compatibility when reading data from the API or reconstructing entities from storage.
- */
-export const LEGACY_DATA_TYPE_MAPPING: Partial<Record<string, DataType>> = {
-  BOOLEAN: 'BOOL',
-  INTEGER: 'INT64',
-  FLOAT: 'FLOAT64',
-  CHECKBOX: 'BOOL',
-  PLACE: 'RELATION',
-} as const;
 
 // ==============================================================================
 // Renderable Types
@@ -118,10 +100,10 @@ export type RenderableEntityType = 'IMAGE' | 'VIDEO' | 'RELATION' | 'DATA' | 'TE
 // All possible flattened render types (GRC-20)
 export type FlattenedRenderType =
   | 'TEXT'
-  | 'INT64'
-  | 'FLOAT64'
+  | 'INTEGER'
+  | 'FLOAT'
   | 'DECIMAL'
-  | 'BOOL'
+  | 'BOOLEAN'
   | 'DATE'
   | 'DATETIME'
   | 'TIME'
@@ -146,9 +128,9 @@ export type SwitchableRenderableType =
   | 'TIME'
   | 'IMAGE'
   | 'VIDEO'
-  | 'BOOL'
-  | 'INT64'
-  | 'FLOAT64'
+  | 'BOOLEAN'
+  | 'INTEGER'
+  | 'FLOAT'
   | 'DECIMAL'
   | 'POINT'
   | 'GEO_LOCATION'
@@ -164,9 +146,9 @@ export const SWITCHABLE_RENDERABLE_TYPE_LABELS: Record<SwitchableRenderableType,
   RELATION: 'Relation',
   IMAGE: 'Image',
   VIDEO: 'Video',
-  BOOL: 'Checkbox',
-  INT64: 'Integer',
-  FLOAT64: 'Float',
+  BOOLEAN: 'Checkbox',
+  INTEGER: 'Integer',
+  FLOAT: 'Float',
   DECIMAL: 'Decimal',
   DATE: 'Date',
   DATETIME: 'Date & Time',
@@ -186,6 +168,7 @@ export type Property = {
   name: string | null;
   dataType: DataType;
   isDataTypeEditable?: boolean;
+  isType?: boolean;
   relationValueTypes?: { id: string; name: string | null }[];
   /**
    * We might render _any_ arbitrary renderable type in the UI or we might

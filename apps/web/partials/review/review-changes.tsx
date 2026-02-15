@@ -7,6 +7,8 @@ import { RemoveScroll } from 'react-remove-scroll';
 
 import * as React from 'react';
 
+import { useAutofocus } from '~/core/hooks/use-autofocus';
+import { useKeyboardShortcuts } from '~/core/hooks/use-keyboard-shortcuts';
 import { useLocalChanges } from '~/core/hooks/use-local-changes';
 import { usePublish } from '~/core/hooks/use-publish';
 import type { Space } from '~/core/io/dto/spaces';
@@ -23,10 +25,10 @@ import type {
   TextValueChange,
   ValueChange,
 } from '~/core/utils/diff/types';
-import { Publish } from '~/core/utils/publish';
 import { useEntityMediaUrl, useImageUrlFromEntity } from '~/core/utils/use-entity-media';
 
 import { Button, SmallButton, SquareButton } from '~/design-system/button';
+import { Checkbox, getChecked } from '~/design-system/checkbox';
 import { Dropdown } from '~/design-system/dropdown';
 import { NativeGeoImage } from '~/design-system/geo-image';
 import { Close } from '~/design-system/icons/close';
@@ -60,6 +62,9 @@ function hasVisibleChanges(entity: EntityDiff): boolean {
   const imageRelationPropertyIds = new Set(
     nonSpecialRelations.filter(r => r.after?.imageUrl || r.before?.imageUrl).map(r => r.typeId)
   );
+  const otherRelationPropertyIds = new Set(
+    nonSpecialRelations.filter(r => !r.after?.imageUrl && !r.before?.imageUrl).map(r => r.typeId)
+  );
   const hasValues = entity.values.some(
     v =>
       v.propertyId !== NAME_PROPERTY_ID &&
@@ -67,6 +72,7 @@ function hasVisibleChanges(entity: EntityDiff): boolean {
       v.propertyId !== COVER_PROPERTY_ID &&
       (v.type as string) !== 'RELATION' &&
       !imageRelationPropertyIds.has(v.propertyId) &&
+      !otherRelationPropertyIds.has(v.propertyId) &&
       (v.before !== null || v.after !== null)
   );
 
@@ -112,8 +118,10 @@ export const ReviewChanges = () => {
   }, [spacesKey, activeSpace]);
 
   React.useEffect(() => {
+    // Don't clear spaces metadata when dedupedSpacesWithActions becomes empty (e.g. after
+    // publishing). The space name/image are still needed in the top bar during the
+    // publish-complete state. Stale metadata is harmless and gets replaced on the next fetch.
     if (dedupedSpacesWithActions.length === 0) {
-      setSpaces([]);
       return;
     }
 
@@ -150,19 +158,10 @@ export const ReviewChanges = () => {
     includeDeleted: true,
   });
 
-  const hasValidOps = React.useMemo(() => {
-    if (!activeSpace) return false;
+  const isReadyToPublish = proposalName.length > 0;
 
-    const result = Effect.runSyncExit(
-      Publish.prepareLocalDataForPublishing(valuesFromSpace, relationsFromSpace, activeSpace)
-    );
-
-    if (result._tag === 'Failure') return false;
-
-    return result.value.length > 0;
-  }, [activeSpace, valuesFromSpace, relationsFromSpace]);
-
-  const isReadyToPublish = hasValidOps && proposalName.length > 0;
+  // Focus the proposal name input after the SlideUp animation completes (0.5s delay + 0.5s duration)
+  const proposalNameRef = useAutofocus<HTMLInputElement>(isReviewOpen, 1000);
 
   const [entities, isLoadingChanges] = useLocalChanges(activeSpace, reviewVersion);
   const visibleEntities = React.useMemo(() => entities.filter(hasVisibleChanges), [entities]);
@@ -176,7 +175,7 @@ export const ReviewChanges = () => {
     }));
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = React.useCallback(async () => {
     if (!activeSpace || !isReadyToPublish) return;
     setIsPublishing(true);
 
@@ -192,7 +191,17 @@ export const ReviewChanges = () => {
     });
 
     setIsPublishing(false);
-  };
+  }, [activeSpace, isReadyToPublish, makeProposal, valuesFromSpace, relationsFromSpace, proposalName]);
+
+  useKeyboardShortcuts(
+    React.useMemo(
+      () =>
+        isReviewOpen && isReadyToPublish && !isPublishing
+          ? [{ key: 'Enter', callback: () => handleSubmit() }]
+          : [],
+      [isReviewOpen, isReadyToPublish, isPublishing, handleSubmit]
+    )
+  );
 
   const handleDeleteAll = () => {
     if (!activeSpace) return;
@@ -268,6 +277,7 @@ export const ReviewChanges = () => {
             <div className="relative mx-auto w-full max-w-[1350px] shrink-0">
               <div className="text-body">Proposal name</div>
               <input
+                ref={proposalNameRef}
                 type="text"
                 value={rawProposalName}
                 onChange={e => handleProposalNameChange(e.target.value)}
@@ -354,7 +364,10 @@ export const ChangedEntity = ({ entity, spaceId }: ChangedEntityProps) => {
   );
 
   const imageRelationPropertyIds = new Set(imageRelations.map(r => r.typeId));
-  const filteredOtherValues = otherValues.filter(v => !imageRelationPropertyIds.has(v.propertyId));
+  const otherRelationPropertyIds = new Set(otherRelations.map(r => r.typeId));
+  const filteredOtherValues = otherValues.filter(
+    v => !imageRelationPropertyIds.has(v.propertyId) && !otherRelationPropertyIds.has(v.propertyId)
+  );
 
   const avatarChangeImageUrl =
     avatarRelations.find(r => r.after?.imageUrl)?.after?.imageUrl ??
@@ -425,33 +438,14 @@ export const ChangedEntity = ({ entity, spaceId }: ChangedEntityProps) => {
             />
           ))}
 
-        {filteredOtherValues.length > 0 && (
+        {(filteredOtherValues.length > 0 || otherRelations.length > 0) && (
           <div className="grid grid-cols-2 gap-20">
-            {filteredOtherValues.some(v => v.before !== null) ? (
+            {filteredOtherValues.some(v => v.before !== null) ||
+            otherRelations.some(r => r.changeType === 'REMOVE' || r.changeType === 'UPDATE') ? (
               <div className="rounded-lg border border-grey-02 p-5 shadow-button">
                 {filteredOtherValues.map(value => (
                   <ValueChangeCell key={value.propertyId} value={value} side="before" />
                 ))}
-              </div>
-            ) : (
-              <div />
-            )}
-            {filteredOtherValues.some(v => v.after !== null) ? (
-              <div className="rounded-lg border border-grey-02 p-5 shadow-button">
-                {filteredOtherValues.map(value => (
-                  <ValueChangeCell key={value.propertyId} value={value} side="after" />
-                ))}
-              </div>
-            ) : (
-              <div />
-            )}
-          </div>
-        )}
-
-        {otherRelations.length > 0 && (
-          <div className="grid grid-cols-2 gap-20">
-            {otherRelations.some(r => r.changeType === 'REMOVE' || r.changeType === 'UPDATE') ? (
-              <div className="rounded-lg border border-grey-02 p-5 shadow-button">
                 {groupRelationsByType(otherRelations).map(([typeId, typeName, relations]) => (
                   <RelationGroupCell
                     key={typeId}
@@ -465,8 +459,12 @@ export const ChangedEntity = ({ entity, spaceId }: ChangedEntityProps) => {
             ) : (
               <div />
             )}
-            {otherRelations.some(r => r.changeType === 'ADD' || r.changeType === 'UPDATE') ? (
+            {filteredOtherValues.some(v => v.after !== null) ||
+            otherRelations.some(r => r.changeType === 'ADD' || r.changeType === 'UPDATE') ? (
               <div className="rounded-lg border border-grey-02 p-5 shadow-button">
+                {filteredOtherValues.map(value => (
+                  <ValueChangeCell key={value.propertyId} value={value} side="after" />
+                ))}
                 {groupRelationsByType(otherRelations).map(([typeId, typeName, relations]) => (
                   <RelationGroupCell
                     key={typeId}
@@ -1007,7 +1005,7 @@ const ValueChangeCell = ({ value, side }: ValueChangeCellProps) => {
       <div>
         {value.type === 'TEXT' && diff ? (
           <TextDiffDisplay value={displayValue} diff={diff} side={side} />
-        ) : value.type === 'BOOL' ? (
+        ) : value.type === 'BOOLEAN' ? (
           <BooleanDisplay value={displayValue} side={side} />
         ) : value.type === 'POINT' ? (
           <PointDisplay value={displayValue} side={side} />
@@ -1163,11 +1161,12 @@ type BooleanDisplayProps = {
 const BooleanDisplay = ({ value, side }: BooleanDisplayProps) => {
   if (value === null) return null;
 
-  const displayValue = value === 'true' ? 'Yes' : 'No';
+  // Handle both '1'/'0' (local store format) and 'true'/'false' (API diff format)
+  const checked = getChecked(value) ?? value === 'true';
 
   return (
-    <span className={cx('inline rounded', side === 'before' ? 'bg-deleted line-through decoration-1' : 'bg-added')}>
-      {displayValue}
+    <span className={cx('inline-flex shrink-0 items-center rounded p-1', side === 'before' ? 'bg-deleted' : 'bg-added')}>
+      <Checkbox checked={checked} disabled />
     </span>
   );
 };

@@ -521,8 +521,9 @@ export function RelationsGroup({ propertyId, id, spaceId }: RelationsGroupProps)
                   },
                 };
 
-                if (result.space) {
-                  newRelation.toSpaceId = result.space;
+                const toSpaceId = result.space ?? result.primarySpace;
+                if (toSpaceId) {
+                  newRelation.toSpaceId = toSpaceId;
                 }
 
                 if (result.verified) {
@@ -879,6 +880,7 @@ function RenderedValue({
     storage.values.update(rawValue, draft => {
       draft.value = value;
       draft.options = options;
+      draft.property.dataType = property.dataType;
     });
   };
 
@@ -902,7 +904,6 @@ function RenderedValue({
               aria-label="text-field"
               value={value}
               onChange={onChange}
-              shouldDebounce={true}
             />
             {property.id === FORMAT_PROPERTY && (
               <SuggestedFormats entityId={entityId} spaceId={spaceId} value={value} onChange={onChange} />
@@ -913,8 +914,8 @@ function RenderedValue({
           </>
         );
       }
-      case 'INT64':
-      case 'FLOAT64':
+      case 'INTEGER':
+      case 'FLOAT':
       case 'DECIMAL':
         return (
           <NumberField
@@ -927,7 +928,7 @@ function RenderedValue({
             dataType={property.dataType}
           />
         );
-      case 'BOOL': {
+      case 'BOOLEAN': {
         const checked = getChecked(value);
 
         return (

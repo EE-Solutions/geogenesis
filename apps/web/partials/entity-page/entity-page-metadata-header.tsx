@@ -7,9 +7,12 @@ import * as React from 'react';
 import {
   DATA_TYPE_ENTITY_IDS,
   DATA_TYPE_PROPERTY,
+  DEFAULT_DATE_FORMAT,
+  DEFAULT_DATETIME_FORMAT,
+  DEFAULT_FLOAT_FORMAT,
   DEFAULT_NUMBER_FORMAT,
-  DEFAULT_URL_TEMPLATE,
   DEFAULT_TIME_FORMAT,
+  DEFAULT_URL_TEMPLATE,
   FORMAT_PROPERTY,
   RENDERABLE_TYPE_PROPERTY,
 } from '~/core/constants';
@@ -113,15 +116,19 @@ export function EntityPageMetadataHeader({ id, spaceId, isRelationPage = false }
 
       // Add format property if type is temporal or numeric
       const isTemporalType = newType === 'DATE' || newType === 'DATETIME' || newType === 'TIME';
-      const isNumericType = newType === 'INT64' || newType === 'FLOAT64' || newType === 'DECIMAL';
+      const isFloatType = newType === 'FLOAT' || newType === 'DECIMAL';
+      const isNumericType = newType === 'INTEGER' || isFloatType;
       const isTextOrUrlType = newType === 'TEXT' || newType === 'URL';
+      const temporalDefaultFormat =
+        newType === 'DATETIME' ? DEFAULT_DATETIME_FORMAT : newType === 'TIME' ? DEFAULT_TIME_FORMAT : DEFAULT_DATE_FORMAT;
+      const numericDefaultFormat = isFloatType ? DEFAULT_FLOAT_FORMAT : DEFAULT_NUMBER_FORMAT;
       if (isTemporalType || isNumericType) {
         addPropertyToEntity({
           entityId,
           propertyId: FORMAT_PROPERTY,
           propertyName: 'Format',
           entityName: name ?? '',
-          defaultValue: isTemporalType ? DEFAULT_TIME_FORMAT : DEFAULT_NUMBER_FORMAT,
+          defaultValue: isTemporalType ? temporalDefaultFormat : numericDefaultFormat,
         });
       } else if (newType === 'URL') {
         addPropertyToEntity({
@@ -265,23 +272,21 @@ export function EntityPageMetadataHeader({ id, spaceId, isRelationPage = false }
   return (
     <div className="flex items-center gap-1 text-text">
       {isPropertyEntity && editable && (
-        <div className="flex items-center gap-2">
+        <>
           <RenderableTypeDropdown
             value={currentRenderableType}
             onChange={handlePropertyTypeChange}
             baseDataType={isDataTypeEditable ? undefined : propertyDataType?.dataType}
           />
           <Divider type="vertical" style="solid" className="h-[12px] border-divider" />
-        </div>
+        </>
       )}
       {propertyDataType && !editable && (
-        <div className="h-100 mt-1 flex items-end">
-          <DataTypePill
-            dataType={propertyDataType.dataType}
-            renderableType={propertyDataType.renderableType}
-            spaceId={spaceId}
-          />
-        </div>
+        <DataTypePill
+          dataType={propertyDataType.dataType}
+          renderableType={propertyDataType.renderableType}
+          spaceId={spaceId}
+        />
       )}
       {editable ? (
         <EditableRelationsGroup id={id} spaceId={spaceId} propertyId={SystemIds.TYPES_PROPERTY} />
