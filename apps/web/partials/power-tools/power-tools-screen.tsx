@@ -31,6 +31,7 @@ import { writeValue } from '~/partials/blocks/table/change-entry';
 import { ToggleEntityPage } from '~/partials/entity-page/toggle-entity-page';
 
 import { usePowerToolsData } from './hooks/use-power-tools-data';
+import { useView } from '~/core/blocks/data/use-view';
 import { PowerToolsTable } from './power-tools-table';
 import { PowerToolsRow } from './types';
 
@@ -119,6 +120,7 @@ export function PowerToolsScreen() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { spaceId, name: blockName, relationId } = useDataBlock();
+  const { setColumnOrder, shownColumnIds } = useView();
   const { source } = useSource();
   const { filterState } = useFilters();
   const isEditing = useUserIsEditing(spaceId);
@@ -259,6 +261,13 @@ export function PowerToolsScreen() {
 
   const isLoading = data.isInitialLoading;
 
+  const handleColumnOrderChange = React.useCallback(
+    (orderedPropertyIds: string[]) => {
+      setColumnOrder(orderedPropertyIds);
+    },
+    [setColumnOrder]
+  );
+
   if (data.sourceType === 'RELATIONS') {
     return (
       <div className="fixed inset-0 z-50 bg-white" style={{ top: '60px' }}>
@@ -341,6 +350,8 @@ export function PowerToolsScreen() {
             onOpenEntityPanel={handleOpenEntityPanel}
             source={source}
             columnOrderKey={relationId}
+            onColumnOrderChange={handleColumnOrderChange}
+            initialOrderedPropertyIds={shownColumnIds}
           />
         )}
         {panelEntityId && (
