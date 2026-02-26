@@ -201,15 +201,17 @@ export function LinkableRelationChip({
       })}
     >
       {disableLink ? (
-        <span>{children}</span>
+        <span onMouseEnter={() => setIsPopoverOpen(false)}>{children}</span>
       ) : (
-        <Link
-          entityId={entityId}
-          spaceId={spaceId ?? currentSpaceId}
-          href={NavUtils.toEntity(spaceId ?? currentSpaceId, entityId)}
-        >
-          {children}
-        </Link>
+        <span onMouseEnter={() => setIsPopoverOpen(false)}>
+          <Link
+            entityId={entityId}
+            spaceId={spaceId ?? currentSpaceId}
+            href={NavUtils.toEntity(spaceId ?? currentSpaceId, entityId)}
+          >
+            {children}
+          </Link>
+        </span>
       )}
       {verified && (
         <span className="inline-block pl-1.5">
@@ -396,13 +398,14 @@ export function LinkableMediaChip({
       })}
     >
       {/* Media content with link to entity */}
-      <Link
-        entityId={entityId}
-        spaceId={spaceId ?? currentSpaceId}
-        href={NavUtils.toEntity(spaceId ?? currentSpaceId, entityId)}
-        className="block"
-      >
-        <div className="relative h-20 w-20">
+      <span onMouseEnter={() => setIsPopoverOpen(false)} className="block">
+        <Link
+          entityId={entityId}
+          spaceId={spaceId ?? currentSpaceId}
+          href={NavUtils.toEntity(spaceId ?? currentSpaceId, entityId)}
+          className="block"
+        >
+          <div className="relative h-20 w-20">
           {mediaType === 'VIDEO' ? (
             videoSrc ? (
               <video
@@ -426,7 +429,8 @@ export function LinkableMediaChip({
             </div>
           )}
         </div>
-      </Link>
+        </Link>
+      </span>
 
       {/* Upload button overlay - only in edit mode */}
       {isEditing && onUpload && !isUploading && (
