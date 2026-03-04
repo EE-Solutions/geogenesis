@@ -41,9 +41,23 @@ export const tiptapExtensions = [
   ImageNode,
   VideoNode,
   Placeholder.configure({
-    placeholder: ({ node }) => {
-      const isHeading = node.type.name === 'heading';
-      return isHeading ? 'Heading...' : '/ to select content block or write some content...';
+    placeholder: ({ node, editor, pos }) => {
+      const name = node.type.name;
+      if (name === 'heading') return 'Heading...';
+      if (name === 'bulletList' || name === 'orderedList' || name === 'listItem') return '';
+      if (name === 'paragraph' && typeof pos === 'number' && pos >= 0) {
+        const $pos = editor.state.doc.resolve(pos);
+        for (let d = $pos.depth; d > 0; d--) {
+          const ancestor = $pos.node(d);
+          if (
+            ancestor.type.name === 'listItem' ||
+            ancestor.type.name === 'bulletList' ||
+            ancestor.type.name === 'orderedList'
+          )
+            return '';
+        }
+      }
+      return '/ to select content block or write some content...';
     },
   }),
   UndoRedo,
