@@ -473,6 +473,8 @@ export function PowerToolsScreen() {
           {selectedCount > 0 ? (
             <>
               <button
+                type="button"
+                onClick={clearSelection}
                 className="flex h-8 w-8 items-center justify-center rounded-sm hover:bg-grey-01"
                 title="Delete selected"
                 aria-label="Delete selected"
@@ -597,7 +599,8 @@ export function PowerToolsScreen() {
               onOpenEntityPanel={handleOpenEntityPanel}
               source={source}
               selection={selectionProps}
-              onRowClick={isEditing && !isSelectionModeActive ? onRowClick : undefined}
+              onRowClick={undefined}
+              onRowDoubleClick={isEditing && !isSelectionModeActive ? onRowClick : undefined}
             />
           </>
         )}
