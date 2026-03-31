@@ -308,7 +308,7 @@ function buildDaoSubspaceCalldata({
     },
   ];
 
-  // Subspace actions go through slow path proposals
+  // Subspace actions must use slow path — they are not in the contract's fast-path allowlist
   const data = encodeProposalCreatedData(proposalId, VOTING_MODE.SLOW, proposalActions);
 
   return encodeFunctionData({
