@@ -49,9 +49,6 @@ export function getPendingProposerSpaceIds(
   return [...proposers];
 }
 
-/** Upper bound on proposers scanned for pending names; each costs up to 2 requests per page. */
-export const MAX_PENDING_PROPOSERS = 10;
-
 export type RankingBlockPendingSelectionInput = {
   /** Every id in the viewer's own ranking (pending badge applies even to named rows). */
   ownRankingEntityIds: readonly string[];
@@ -63,7 +60,7 @@ export type RankingBlockPendingSelectionInput = {
   unresolvedViewerOwnEntityIds: readonly string[];
   /** Everyone who submitted to this ranking. */
   submitterSpaceIds: Iterable<string>;
-  /** The viewer and shared-ranking author; kept ahead of submitters when capping. */
+  /** The viewer and shared-ranking author, always searched. */
   priorityProposerSpaceIds: Iterable<string | null | undefined>;
 };
 
@@ -98,6 +95,6 @@ export function selectRankingBlockPendingCandidates({
 
   return {
     candidateEntityIds: [...candidates],
-    proposerSpaceIds: proposers.slice(0, MAX_PENDING_PROPOSERS),
+    proposerSpaceIds: proposers,
   };
 }

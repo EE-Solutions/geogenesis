@@ -9,9 +9,6 @@ import {
 } from './ranking-pending-proposal-entries';
 
 const MAX_PAGES_PER_PROPOSER = 3;
-// Bounds diff requests per call; each proposer's proposals arrive newest first.
-const MAX_DIFFS = 10;
-
 // Matches the proposal name set by the ranking compose "Create new" flow.
 const CREATE_NEW_PROPOSAL_MARKER = ' - Create new - ';
 
@@ -48,12 +45,11 @@ export async function fetchRankingPendingEntities({
 
   const pendingEntityIds = new Set<string>();
   const entriesByEntityId = new Map<string, ReturnType<typeof entityDiffToRankingEntry>>();
-  let diffBudget = MAX_DIFFS;
 
   await Promise.all(
     [...new Set(proposerSpaceIds.filter(Boolean))].map(async proposerSpaceId => {
       for (let page = 0; page < MAX_PAGES_PER_PROPOSER; page++) {
-        if (pendingEntityIds.size === wantedByHex.size || diffBudget <= 0) return;
+        if (pendingEntityIds.size === wantedByHex.size) return;
 
         const proposals = await fetchProposalsByUser({
           proposerSpaceId,
@@ -64,8 +60,7 @@ export async function fetchRankingPendingEntities({
         });
         if (proposals.length === 0) return;
 
-        const createNewProposals = proposals.filter(isCreateNewProposal).slice(0, Math.max(0, diffBudget));
-        diffBudget -= createNewProposals.length;
+        const createNewProposals = proposals.filter(isCreateNewProposal);
 
         await Promise.all(
           createNewProposals.map(async proposal => {

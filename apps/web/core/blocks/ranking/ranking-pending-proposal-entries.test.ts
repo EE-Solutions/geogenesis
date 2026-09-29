@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest';
 import type { EntityDiff } from '~/core/utils/diff';
 
 import {
-  MAX_PENDING_PROPOSERS,
   entityDiffToRankingEntry,
   getPendingProposerSpaceIds,
   selectRankingBlockPendingCandidates,
@@ -137,7 +136,8 @@ describe('selectRankingBlockPendingCandidates', () => {
     });
 
     expect(candidateEntityIds).toEqual(['e1', 'v1']);
-    expect(proposerSpaceIds).toHaveLength(MAX_PENDING_PROPOSERS);
+    // Every submitter is searched: dropping one could leave their pending entity "Untitled".
+    expect(proposerSpaceIds).toHaveLength(22);
     expect(proposerSpaceIds.slice(0, 3)).toEqual(['me', 'shared-author', 'author-0']);
   });
 

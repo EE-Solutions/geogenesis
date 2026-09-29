@@ -98,18 +98,59 @@ describe('fetchRankingPendingEntities', () => {
     expect(fetchProposalsByUserMock).toHaveBeenCalledTimes(1);
   });
 
-  it('caps the total number of diffs across proposers and pages', async () => {
-    let next = 0;
-    fetchProposalsByUserMock.mockImplementation(async () => [1, 2, 3, 4, 5].map(() => proposal(next++)));
-    fetchProposalDiffsMock.mockResolvedValue({ status: 'success', entities: [] });
+  // A budget shared across proposers let other rankings' proposals, or a faster proposer, starve
+  // the viewer's own pending entity (GEO-3067 review).
+  it('finds the wanted entity behind many newer "Create new" proposals for other rankings', async () => {
+    const wanted = hexId(1);
+    fetchProposalsByUserMock.mockImplementation(async ({ page }: { page: number }) =>
+      page === 0
+        ? Array.from({ length: 5 }, (_, i) => proposal(100 + i, { name: `Other - Create new - ${i}` }))
+        : page === 1
+          ? [
+              ...Array.from({ length: 4 }, (_, i) => proposal(200 + i, { name: `Other - Create new - ${i}` })),
+              proposal(1),
+            ]
+          : []
+    );
+    fetchProposalDiffsMock.mockImplementation(async (proposalId: string) =>
+      proposalId === hexId(1001)
+        ? { status: 'success', entities: [entityDiff(wanted, 'Mine')] }
+        : { status: 'success', entities: [entityDiff(hexId(5000), 'Theirs')] }
+    );
 
-    await fetchRankingPendingEntities({
+    const result = await fetchRankingPendingEntities({
       spaceId: SPACE_ID,
-      unresolvedEntityIds: [hexId(999)],
-      proposerSpaceIds: ['a', 'b', 'c', 'd'],
+      unresolvedEntityIds: [wanted],
+      proposerSpaceIds: ['me'],
     });
 
-    expect(fetchProposalDiffsMock).toHaveBeenCalledTimes(10);
+    expect(result.pendingEntityIds.has(wanted)).toBe(true);
+    expect(result.entriesByEntityId.get(wanted)?.name).toBe('Mine');
+  });
+
+  it("finds the viewer's entity even when other proposers answer first", async () => {
+    const wanted = hexId(1);
+    let next = 300;
+    fetchProposalsByUserMock.mockImplementation(async ({ proposerSpaceId }: { proposerSpaceId: string }) => {
+      if (proposerSpaceId === 'me') {
+        await new Promise(resolve => setTimeout(resolve, 20));
+        return [proposal(1)];
+      }
+      return Array.from({ length: 5 }, () => proposal(next++));
+    });
+    fetchProposalDiffsMock.mockImplementation(async (proposalId: string) =>
+      proposalId === hexId(1001)
+        ? { status: 'success', entities: [entityDiff(wanted, 'Mine')] }
+        : { status: 'success', entities: [] }
+    );
+
+    const result = await fetchRankingPendingEntities({
+      spaceId: SPACE_ID,
+      unresolvedEntityIds: [wanted],
+      proposerSpaceIds: ['me', 'a', 'b'],
+    });
+
+    expect(result.pendingEntityIds.has(wanted)).toBe(true);
   });
 
   it('skips fetching when there is nothing to resolve or nobody to ask', async () => {
