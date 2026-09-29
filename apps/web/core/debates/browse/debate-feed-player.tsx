@@ -111,7 +111,7 @@ export function DebateFeedPlayer({
   // Loading is deliberately wider than playing. `useDebatePlayback`'s flag gates only the URL
   // fetch and the transcript query — playback is driven by `active` in the effect below — so a
   // preloading card fetches without autoplaying off-screen.
-  const controller = useDebatePlayback(debate, active || preload);
+  const controller = useDebatePlayback(debate, active || preload, { mediaAttached: !releaseMedia });
   const measurement = usePlaybackAnalytics(debate, active, controller, !releaseMedia);
   const {
     slot1VideoRef,
@@ -119,6 +119,7 @@ export function DebateFeedPlayer({
     slot1Participant,
     slot2Participant,
     urls,
+    resigningUrls,
     ready,
     error,
     playing,
@@ -507,7 +508,7 @@ export function DebateFeedPlayer({
         inert={endCardShown}
         participant={slot1Participant}
         byline={bylineFor(slot1Participant)}
-        src={releaseMedia ? null : urls.slot1}
+        src={releaseMedia || resigningUrls ? null : urls.slot1}
         videoRef={slot1VideoRef}
         audible={playing && turnState?.slot === 1}
         countdown={playing && turnState?.slot === 1 ? turnState : null}
@@ -567,7 +568,7 @@ export function DebateFeedPlayer({
         inert={endCardShown}
         participant={slot2Participant}
         byline={bylineFor(slot2Participant)}
-        src={releaseMedia ? null : urls.slot2}
+        src={releaseMedia || resigningUrls ? null : urls.slot2}
         videoRef={slot2VideoRef}
         audible={playing && turnState?.slot === 2}
         countdown={playing && turnState?.slot === 2 ? turnState : null}

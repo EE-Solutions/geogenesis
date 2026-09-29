@@ -34,6 +34,63 @@ function debateFixture(id = 'debate-1'): Debate {
   } as unknown as Debate;
 }
 
+// Recording URLs are presigned for 15 minutes. A feed card that held its URLs while released
+// has to re-sign on re-attach, or the viewer comes back to a recording that fails to load.
+describe('useDebatePlayback — re-signing held URLs after a long release (GEO-3067)', () => {
+  let now = 1_700_000_000_000;
+  let signature = 0;
+
+  beforeEach(() => {
+    now = 1_700_000_000_000;
+    signature = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    mocks.turnSegments = [];
+    mocks.recordingUrl.mockReset();
+    mocks.recordingUrl.mockImplementation(({ filename }: { filename: string }) =>
+      Promise.resolve({ url: `https://cdn.test/${filename}?sig=${signature++}` })
+    );
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  function renderPlayback() {
+    const debate = debateFixture();
+    return renderHook(({ mediaAttached }) => useDebatePlayback(debate, true, { mediaAttached }), {
+      initialProps: { mediaAttached: true },
+    });
+  }
+
+  it('keeps the held URLs when the card comes back within the reuse window', async () => {
+    const { result, rerender } = renderPlayback();
+    await waitFor(() => expect(result.current.urls.slot1).not.toBeNull());
+    const held = result.current.urls;
+
+    rerender({ mediaAttached: false });
+    now += 5 * 60_000;
+    rerender({ mediaAttached: true });
+
+    expect(result.current.resigningUrls).toBe(false);
+    expect(result.current.urls).toBe(held);
+    expect(mocks.recordingUrl).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-signs both URLs, holding the placeholder, when the card comes back after the window', async () => {
+    const { result, rerender } = renderPlayback();
+    await waitFor(() => expect(result.current.urls.slot1).not.toBeNull());
+    const held = result.current.urls;
+
+    rerender({ mediaAttached: false });
+    now += 11 * 60_000;
+    rerender({ mediaAttached: true });
+
+    expect(result.current.resigningUrls).toBe(true);
+    await waitFor(() => expect(result.current.resigningUrls).toBe(false));
+    expect(mocks.recordingUrl).toHaveBeenCalledTimes(4);
+    expect(result.current.urls.slot1).not.toBe(held.slot1);
+    expect(result.current.urls.slot2).not.toBe(held.slot2);
+  });
+});
+
 describe('useDebatePlayback — playback URLs survive re-activation (GEO-2895)', () => {
   beforeEach(() => {
     mocks.turnSegments = [];
