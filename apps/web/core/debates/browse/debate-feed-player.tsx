@@ -112,7 +112,7 @@ export function DebateFeedPlayer({
   // fetch and the transcript query — playback is driven by `active` in the effect below — so a
   // preloading card fetches without autoplaying off-screen.
   const controller = useDebatePlayback(debate, active || preload);
-  const measurement = usePlaybackAnalytics(debate, active, controller);
+  const measurement = usePlaybackAnalytics(debate, active, controller, !releaseMedia);
   const {
     slot1VideoRef,
     slot2VideoRef,
