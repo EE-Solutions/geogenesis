@@ -16,6 +16,7 @@ export function usePlaybackAnalytics(
   controller: DebatePlaybackController,
   mediaAttached = true
 ) {
+  const playbackInstance = React.useRef(crypto.randomUUID());
   const elementRef = React.useRef<HTMLDivElement>(null);
   const latest = React.useRef({ active, controller });
   latest.current = { active, controller };
@@ -47,7 +48,7 @@ export function usePlaybackAnalytics(
       typeof IntersectionObserver === 'undefined'
     )
       return;
-    const instance = crypto.randomUUID();
+    const instance = playbackInstance.current;
     let visible = false;
     let exposed = false;
     let visibleSince: number | null = null;
@@ -164,5 +165,9 @@ export function usePlaybackAnalytics(
     mediaAttached,
   ]);
 
-  return { elementRef, control: (name: string) => controlRef.current(name) };
+  return {
+    elementRef,
+    playbackInstanceId: playbackInstance.current,
+    control: (name: string) => controlRef.current(name),
+  };
 }

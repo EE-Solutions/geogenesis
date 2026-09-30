@@ -6,15 +6,15 @@ import { useAtom } from 'jotai';
 
 import { personProfileOpened } from '~/core/analytics';
 import { PEER_SCHEDULE_DAYS } from '~/core/availability/peer-schedule';
+import type { ScheduleEntry } from '~/core/availability/schedule-analytics';
 import { usePersonalSpaceId } from '~/core/hooks/use-personal-space-id';
 import { usePrivySignIn } from '~/core/hooks/use-privy-sign-in';
 import { type SpaceLabel, useSpaceLabels } from '~/core/hooks/use-space-labels';
-import { useDebugDebatesPageEnabled, usePeerAvailabilityEnabled } from '~/core/state/feature-flags';
 import { normId } from '~/core/utils/norm-id';
 import { NavUtils, validateSpaceId } from '~/core/utils/utils';
 
 import { Avatar } from '~/design-system/avatar';
-import { Time } from '~/design-system/icons/time';
+import { Calendar } from '~/design-system/icons/calendar';
 import { Input } from '~/design-system/input';
 import { OnlineDot } from '~/design-system/online-dot';
 import { PrefetchLink as Link } from '~/design-system/prefetch-link';
@@ -23,7 +23,6 @@ import { useElevatedPopoverPortal } from '~/design-system/use-elevated-popover-p
 
 import { AvailabilityModal } from '~/partials/availability/availability-modal';
 import { PeerAvailabilityBookingModal } from '~/partials/availability/peer-availability-booking-modal';
-import { PeerAvailabilityModal } from '~/partials/availability/peer-availability-modal';
 
 import { activeDebate } from '../activity-state';
 import type { DebatePerson, SchedulablePerson, ScheduleOverlapSlot } from '../api';
@@ -45,8 +44,10 @@ import { DebateHoursNote } from './debate-hours-note';
 import { type ClaimMatch, analyzeMatchingClaims } from './disagreement-counts';
 import { FilterSwitch } from './filter-switch';
 import { useDebatePeople, useDebateRequests, useSchedulablePeople } from './hooks';
-import { HubPillButton } from './hub-pill-button';
+import { hubAnalyticsAttributes } from './hub-analytics';
+import { HUB_ICON_BUTTON_CLASS_NAME, HubPillButton } from './hub-pill-button';
 import { HubQueryState } from './hub-states';
+import { isExcludedFromPeopleTab } from './people-tab-exclusions';
 import { PersonMatches } from './person-disagreements';
 import type { PersonRecord } from './person-record';
 import { PersonRecordLine } from './person-record-line';
@@ -96,9 +97,9 @@ function recordsPending(personIds: string[], records: Map<string, PersonRecord>)
  * Everyone online and available right now. The Debate button sends the same claimless challenge as
  * `ProfileDebateButton` on a person's home space — `DebateCoordinator` owns the resulting dialog.
  *
- * With "Online only" off, the default, offline people who share a free slot with the viewer are
- * listed too, ranked by matches alongside everyone online, each with those times and a Schedule
- * button in place of the request (GEO-2937).
+ * With "Online only" off, the default, offline people with free time this week are listed too,
+ * ranked by matches alongside everyone online, each with any times they share with the viewer and a
+ * Schedule button in place of the request (GEO-2937).
  */
 export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) => void }) {
   const { authenticated } = useGeoChatAuth();
@@ -116,27 +117,26 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
   // One elevated portal for every row's menu. A portal per person would append a matching number
   // of containers to the body, while a plain Radix portal sits behind this z-200 panel.
   const popoverPortal = useElevatedPopoverPortal();
-  const peerAvailabilityEnabled = usePeerAvailabilityEnabled();
-  // The debug flag also opens "See times", because a room is booked from the week.
-  const bookingEnabled = useDebugDebatesPageEnabled() || peerAvailabilityEnabled;
-  // Held here rather than in the row. Rows follow live data: someone who goes offline with no shared
-  // time left, or whose last shared time passes, drops out of the list, and a dialog inside their
-  // row would vanish mid-read.
+  // Held here rather than in the row. Rows follow live data: someone whose free time runs out, or
+  // who is blocked, drops out of the list, and a dialog inside their row would vanish mid-read.
   const [viewingTimes, setViewingTimes] = React.useState<{
     userId: string;
     name: string;
     initialStart?: string;
+    entry: ScheduleEntry;
   } | null>(null);
   // The row that opened it, so focus can go back there. It may unmount first; the modal checks.
   const seeTimesOpenerRef = React.useRef<HTMLElement | null>(null);
   const [onlineOnly, setOnlineOnly] = useAtom(debatesHubPeopleOnlineOnlyAtom);
-  // Offline people can only be scheduled with, so the switch exists only where booking does.
-  const offlineAvailable = bookingEnabled && authenticated;
-  const showOffline = offlineAvailable && !onlineOnly;
+  // Offline people can only be scheduled with, which needs an account to book from.
+  const showOffline = authenticated && !onlineOnly;
   const schedulableQuery = useSchedulablePeople(showOffline);
   const viewerHasNoSchedule = showOffline && schedulableQuery.data?.viewer_has_schedule === false;
 
-  const onlinePeople = React.useMemo(() => peopleQuery.data?.people ?? [], [peopleQuery.data]);
+  const onlinePeople = React.useMemo(
+    () => (peopleQuery.data?.people ?? []).filter(person => !isExcludedFromPeopleTab(person.profile_space_id)),
+    [peopleQuery.data]
+  );
   // Held in state so the slot filters below re-run as time passes; React Compiler caches a
   // `Date.now()` read in render once per mount.
   const [now, setNow] = React.useState(() => Date.now());
@@ -160,13 +160,13 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
     const offline: DebatePerson[] = [];
     for (const candidate of schedulableQuery.data.people) {
       const key = normId(candidate.user.user_id);
-      if (onRoster.has(key)) continue;
+      if (onRoster.has(key) || isExcludedFromPeopleTab(candidate.user.profile_space_id)) continue;
       const upcoming = candidate.slots.filter(slot => {
         const start = Date.parse(slot.start);
         return start > now && start < weekEnds;
       });
-      // Every shared time already past: nothing left to schedule in this window.
-      if (upcoming.length === 0 && !candidate.truncated) continue;
+      // Kept with no shared times left: geo-chat lists everyone with free time, and Schedule
+      // still opens their week, where the viewer can book outside their own hours.
       byUser.set(key, {
         slots: upcoming.slice(0, INLINE_SLOTS),
         truncated: candidate.truncated || upcoming.length > INLINE_SLOTS,
@@ -199,7 +199,7 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
     isLoading: positionsLoading,
     isPlaceholderData: positionsArePlaceholderData,
     error: positionsError,
-  } = useParticipantPositions(positionParticipants, viewerProfileSpaceId);
+  } = useParticipantPositions(positionParticipants, viewerProfileSpaceId, { onlyViewerClaims: true });
   const matchAnalysis = React.useMemo(
     () => analyzeMatchingClaims(positionsByClaim, viewerProfileSpaceId),
     [positionsByClaim, viewerProfileSpaceId]
@@ -434,7 +434,7 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
           facetSpaces={facetSpaces}
           countsPending={peopleQuery.isLoading || publishableSpacesPending || personRecordsPending}
           trailing={
-            offlineAvailable ? (
+            authenticated ? (
               <FilterSwitch label="Online only" checked={onlineOnly} onChange={setOnlineOnly} analyticsSurface="hub" />
             ) : undefined
           }
@@ -543,14 +543,10 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
                     disabled={buttonsDisabled}
                     disabledReason={blockedReason ?? 'You have a debate request awaiting a reply.'}
                     onRequireSignIn={onRequireSignIn}
-                    onSeeTimes={
-                      bookingEnabled
-                        ? (peer, opener, initialStart) => {
-                            seeTimesOpenerRef.current = opener;
-                            setViewingTimes({ ...peer, initialStart });
-                          }
-                        : undefined
-                    }
+                    onSeeTimes={(peer, opener, entry, initialStart) => {
+                      seeTimesOpenerRef.current = opener;
+                      setViewingTimes({ ...peer, initialStart, entry });
+                    }}
                   />
                 );
               })}
@@ -560,24 +556,15 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
       </div>
 
       {/* Closing returns to the hub, which is where it was opened from. */}
-      {bookingEnabled ? (
-        <PeerAvailabilityBookingModal
-          open={viewingTimes !== null}
-          userId={viewingTimes?.userId ?? ''}
-          peerName={viewingTimes?.name}
-          onClose={() => setViewingTimes(null)}
-          openerRef={seeTimesOpenerRef}
-          initialSelectedStart={viewingTimes?.initialStart}
-        />
-      ) : (
-        <PeerAvailabilityModal
-          open={viewingTimes !== null}
-          userId={viewingTimes?.userId ?? ''}
-          peerName={viewingTimes?.name}
-          onClose={() => setViewingTimes(null)}
-          openerRef={seeTimesOpenerRef}
-        />
-      )}
+      <PeerAvailabilityBookingModal
+        open={viewingTimes !== null}
+        userId={viewingTimes?.userId ?? ''}
+        peerName={viewingTimes?.name}
+        onClose={() => setViewingTimes(null)}
+        openerRef={seeTimesOpenerRef}
+        initialSelectedStart={viewingTimes?.initialStart}
+        entry={viewingTimes?.entry}
+      />
     </div>
   );
 }
@@ -623,8 +610,12 @@ function PersonRow({
    * would fail at the token exchange with an error the viewer can do nothing about.
    */
   onRequireSignIn?: () => void;
-  /** Absent while the feature flag is off, which is what hides "See times". */
-  onSeeTimes?: (peer: { userId: string; name: string }, opener: HTMLElement | null, initialStart?: string) => void;
+  onSeeTimes: (
+    peer: { userId: string; name: string },
+    opener: HTMLElement | null,
+    entry: ScheduleEntry,
+    initialStart?: string
+  ) => void;
 }) {
   const createChallenge = useCreateDebateChallenge();
   const profileHref = validateSpaceId(person.profile_space_id) ? NavUtils.toSpace(person.profile_space_id) : null;
@@ -702,12 +693,17 @@ function PersonRow({
             <PersonRecordLine record={record} match={match} activeSpaces={activeSpaces} />
           </div>
         ) : null}
-        {schedule && onSeeTimes ? (
+        {schedule ? (
           <SharedTimes
             personName={speakerLabel(person)}
             schedule={schedule}
             onPick={(start, opener) =>
-              onSeeTimes({ userId: person.user_id, name: speakerLabel(person) }, opener, start)
+              onSeeTimes(
+                { userId: person.user_id, name: speakerLabel(person) },
+                opener,
+                start ? 'people_time' : 'people_more_times',
+                start
+              )
             }
           />
         ) : null}
@@ -718,31 +714,39 @@ function PersonRow({
             is next free. Gating it on the same reasons would hide it at the moment it earns its
             place. Signed out it opens Privy like the pill does, because the endpoint behind it is
             viewer-scoped and would only 401. */}
-        {onSeeTimes && !schedule && (
+        {!schedule && (
           <button
             type="button"
             // Every row carries this control, so the visible label alone leaves a screen reader or
             // voice control with a list of identical targets.
             aria-label={`See times for ${speakerLabel(person)}`}
+            {...hubAnalyticsAttributes('See times', 'open_peer_availability')}
             onClick={event =>
               onRequireSignIn
                 ? onRequireSignIn()
-                : onSeeTimes({ userId: person.user_id, name: speakerLabel(person) }, event.currentTarget)
+                : onSeeTimes(
+                    { userId: person.user_id, name: speakerLabel(person) },
+                    event.currentTarget,
+                    'people_see_times'
+                  )
             }
             title="See times"
             // An icon rather than text: the stats beside it need the width in a narrow panel.
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-grey-04 transition-colors hover:bg-grey-01 hover:text-text"
+            className={HUB_ICON_BUTTON_CLASS_NAME}
           >
-            <Time />
+            <Calendar />
           </button>
         )}
-        {schedule && onSeeTimes ? (
+        {schedule ? (
           // Offline people cannot take a request, so the pill books a time instead. Never disabled by
           // the viewer's live request state, for the same reason "See times" is not.
           <HubPillButton
             aria-label={`Schedule a debate with ${speakerLabel(person)}`}
-            analyticsLabel="Schedule debate"
-            onClick={event => onSeeTimes({ userId: person.user_id, name: speakerLabel(person) }, event.currentTarget)}
+            analyticsLabel="Debate hub Schedule debate"
+            analyticsIntent="open_peer_availability"
+            onClick={event =>
+              onSeeTimes({ userId: person.user_id, name: speakerLabel(person) }, event.currentTarget, 'people_schedule')
+            }
           >
             Schedule
           </HubPillButton>
@@ -792,6 +796,7 @@ function SharedTimes({
           key={slot.start}
           type="button"
           aria-label={`Schedule a debate with ${personName} ${formatSlot(slot.start)}`}
+          {...hubAnalyticsAttributes('Shared time', 'open_peer_availability')}
           onClick={event => onPick(slot.start, event.currentTarget)}
           className="rounded-full border border-grey-02 px-2 py-0.5 text-footnote text-text transition-colors hover:border-text"
         >
@@ -802,6 +807,7 @@ function SharedTimes({
         <button
           type="button"
           aria-label={`More times for ${personName}`}
+          {...hubAnalyticsAttributes('More times', 'open_peer_availability')}
           onClick={event => onPick(undefined, event.currentTarget)}
           className="px-1 text-footnote text-grey-04 transition-colors hover:text-text"
         >
@@ -833,7 +839,7 @@ function formatSlot(iso: string, now: Date = new Date()): string {
 function SetAvailabilityNotice() {
   const [open, setOpen] = React.useState(false);
   const { blocks, isError, refetch } = useDebateSchedule();
-  const saveSchedule = useSaveDebateSchedule();
+  const saveSchedule = useSaveDebateSchedule({ surface: 'people_tab' });
   const openerRef = React.useRef<HTMLElement | null>(null);
 
   return (
@@ -842,7 +848,8 @@ function SetAvailabilityNotice() {
         Set your availability to see offline people you can schedule a debate with.
       </Text>
       <HubPillButton
-        analyticsLabel="Set availability"
+        analyticsLabel="Debate hub Set availability"
+        analyticsIntent="open_debate_schedule"
         onClick={event => {
           openerRef.current = event.currentTarget;
           setOpen(true);

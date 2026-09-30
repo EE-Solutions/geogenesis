@@ -8,7 +8,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { PeerSchedule, PeerSlot } from '~/core/availability/peer-schedule';
 
-import { type PeerAvailabilityBooking, PeerAvailabilityView } from './peer-availability';
+import {
+  MUTUAL_SLOT,
+  PEER_ONLY_SLOT,
+  type PeerAvailabilityBooking,
+  PeerAvailabilityView,
+  SELECTED_SLOT,
+} from './peer-availability';
 
 // A fixed clock, so the seven columns and their labels are the same on every run. A Monday.
 const NOW = new Date('2026-09-21T15:00:00Z');
@@ -118,6 +124,85 @@ describe('PeerAvailabilityView', () => {
     });
   });
 
+  // Against the shared constants rather than literal colors, so a palette change keeps these green
+  // and a chip drifting from its legend swatch does not.
+  describe('slot looks', () => {
+    const wears = (element: Element, look: string) => look.split(' ').every(name => element.classList.contains(name));
+    const swatch = (label: string) =>
+      within(screen.getByRole('list', { name: 'Legend' }))
+        .getByText(label)
+        .closest('li')!
+        .querySelector('[aria-hidden]')!;
+
+    it('draws each chip in the look its legend swatch shows', () => {
+      setup({ slots: [slot(13, true), slot(14, false)] });
+      const monday = within(day('2026-09-21'));
+      const mutual = monday.getByRole('button', { name: /1pm/ });
+      const theirs = monday.getByRole('button', { name: /2pm/ });
+
+      expect(wears(mutual, MUTUAL_SLOT) && wears(swatch('You’re both free'), MUTUAL_SLOT)).toBe(true);
+      expect(wears(theirs, PEER_ONLY_SLOT) && wears(swatch('Ada is free'), PEER_ONLY_SLOT)).toBe(true);
+      expect(wears(mutual, PEER_ONLY_SLOT) || wears(theirs, MUTUAL_SLOT)).toBe(false);
+    });
+
+    // Stacked rather than swapped, the unselected fill and border would fight the selected ones.
+    it('replaces a picked chip’s look rather than layering over it', async () => {
+      const { user } = setup({ slots: [slot(13, true), slot(14, false)] });
+      const monday = within(day('2026-09-21'));
+
+      for (const [name, look] of [
+        [/1pm/, MUTUAL_SLOT],
+        [/2pm/, PEER_ONLY_SLOT],
+      ] as const) {
+        const chip = monday.getByRole('button', { name });
+        await user.click(chip);
+        expect(wears(chip, SELECTED_SLOT)).toBe(true);
+        expect(wears(chip, look)).toBe(false);
+      }
+    });
+
+    it('darkens only unpicked chips on hover, and never the static swatches', async () => {
+      const { user } = setup({ slots: [slot(13, true), slot(14, false)] });
+      const monday = within(day('2026-09-21'));
+      const picked = monday.getByRole('button', { name: /1pm/ });
+      await user.click(picked);
+
+      expect(picked.className).not.toMatch(/hover:/);
+      expect(monday.getByRole('button', { name: /2pm/ }).className).toContain('hover:border-text');
+      for (const label of ['You’re both free', 'Ada is free']) expect(swatch(label).className).not.toMatch(/hover:/);
+    });
+  });
+
+  describe('legend', () => {
+    it('keys both slot styles', () => {
+      setup({ slots: [slot(13, true), slot(14, false)] });
+      const legend = within(screen.getByRole('list', { name: 'Legend' }));
+
+      expect(legend.getByText('You’re both free')).toBeInTheDocument();
+      expect(legend.getByText('Ada is free')).toBeInTheDocument();
+    });
+
+    it('drops the mutual key for a viewer with no schedule of their own', () => {
+      setup({ viewerHasSchedule: false, slots: [slot(13, false)] });
+      const legend = within(screen.getByRole('list', { name: 'Legend' }));
+
+      expect(legend.queryByText('You’re both free')).not.toBeInTheDocument();
+      expect(legend.getByText('Ada is free')).toBeInTheDocument();
+    });
+
+    it('names them by first name only', () => {
+      setup({ slots: [slot(13, false)] }, 'Ada Lovelace');
+      const legend = within(screen.getByRole('list', { name: 'Legend' }));
+
+      expect(legend.getByText('Ada is free')).toBeInTheDocument();
+    });
+
+    it('is not drawn over an empty week', () => {
+      setup({ slots: [] });
+      expect(screen.queryByRole('list', { name: 'Legend' })).not.toBeInTheDocument();
+    });
+  });
+
   describe('what a screen reader gets', () => {
     it('says whose availability a slot is, since the border style cannot', () => {
       setup({ slots: [slot(13, true), slot(14, false)] });
@@ -149,9 +234,9 @@ describe('PeerAvailabilityView', () => {
       expect(screen.getByRole('group', { name: 'Today Sep 21' })).toBeInTheDocument();
     });
 
-    it('carries their local time into the name when the offset is large', () => {
+    it('names the time in the viewer zone only, even across a large offset', () => {
       setup({ viewerTimezone: 'America/New_York', peerTimezone: 'Asia/Tokyo', slots: [slot(13)] });
-      expect(screen.getByRole('button', { name: /9am, 10pm for Ada, you are both free/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /9am, you are both free/ })).toBeInTheDocument();
     });
   });
 
@@ -175,6 +260,20 @@ describe('PeerAvailabilityView', () => {
       expect(monday.getAllByRole('button', { name: /at \d/ })).toHaveLength(6);
       // A toggle, so an expanded day can be put back.
       expect(monday.getByRole('button', { name: /Show less on/ })).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    // Collapsing is not expanding, so the two directions must not share an intent in the data.
+    it('names the expander by what a click does in each state', async () => {
+      const { user } = setup({ slots: many });
+      const monday = within(day('2026-09-21'));
+
+      const expand = monday.getByRole('button', { name: /\+2 more times on/ });
+      expect(expand).toHaveAttribute('data-geo-analytics-intent', 'expand_peer_availability_day');
+      await user.click(expand);
+      expect(monday.getByRole('button', { name: /Show less on/ })).toHaveAttribute(
+        'data-geo-analytics-intent',
+        'collapse_peer_availability_day'
+      );
     });
 
     it('does not offer an expander for exactly four', () => {
@@ -272,34 +371,24 @@ describe('PeerAvailabilityView', () => {
       straddling({ slots: [{ start: '2026-10-23T17:00:00Z', end: '2026-10-23T17:30:00Z', viewerIsFree: true }] });
       expect(screen.getByText(/Ada is in Europe\/Berlin, \+6 hrs\./)).toBeInTheDocument();
     });
-
-    it('labels each chip from its own offset', () => {
-      straddling();
-      // Same 17:00Z wall clock for the viewer either side of the boundary; Berlin moves.
-      expect(screen.getByRole('button', { name: /1pm.*7pm/s })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /1pm.*6pm/s })).toBeInTheDocument();
-    });
   });
 
-  describe('their local time on a chip', () => {
-    it('is carried when the offset is large', () => {
+  // A second clock on every chip read as noise, so the viewer's own is the only one shown.
+  describe('times on a chip', () => {
+    it('shows only the viewer time when the peer is far east', () => {
       setup({ viewerTimezone: 'America/New_York', peerTimezone: 'Asia/Tokyo', slots: [slot(13)] });
       // 13:00Z is 9am in New York and 10pm in Tokyo.
-      expect(screen.getByRole('button', { name: /9am.*10pm/s })).toBeInTheDocument();
-    });
-
-    // Only ever tested eastward before, so `Math.abs` could be deleted with every test still green.
-    it('is carried when the peer is west of the viewer', () => {
-      // A Tokyo viewer is already on the 22nd at the fixed NOW, so the slot has to be too.
-      setup({ viewerTimezone: 'Asia/Tokyo', peerTimezone: 'America/New_York', slots: [slot(13, true, 22)] });
-      // 13:00Z is 10pm in Tokyo and 9am in New York: an offset of -13 hours.
-      expect(screen.getByRole('button', { name: /10pm, 9am for Ada/ })).toBeInTheDocument();
-    });
-
-    it('is left off when both are in the same part of the day', () => {
-      setup({ viewerTimezone: 'America/New_York', peerTimezone: 'America/Chicago', slots: [slot(13)] });
       const chip = screen.getByRole('button', { name: /9am/ });
       expect(chip.textContent).toBe('9am');
+      expect(chip.getAttribute('aria-label')).not.toMatch(/10pm/);
+    });
+
+    it('shows only the viewer time when the peer is far west', () => {
+      // A Tokyo viewer is already on the 22nd at the fixed NOW, so the slot has to be too.
+      setup({ viewerTimezone: 'Asia/Tokyo', peerTimezone: 'America/New_York', slots: [slot(13, true, 22)] });
+      const chip = screen.getByRole('button', { name: /10pm/ });
+      expect(chip.textContent).toBe('10pm');
+      expect(chip.getAttribute('aria-label')).not.toMatch(/9am/);
     });
   });
 
@@ -361,16 +450,20 @@ describe('booking a slot', () => {
 });
 
 describe('what the footer has to say', () => {
-  it('names both zones for the picked time', async () => {
+  // In the grid's zone rather than the browser's, so the footer cannot contradict the chip.
+  it('names the picked time in the viewer zone only', async () => {
     const { user } = setupBooking(booking(), {
-      viewerTimezone: 'UTC',
+      viewerTimezone: 'America/New_York',
       peerTimezone: 'Asia/Tokyo',
       slots: [slot(16)],
     });
-    await user.click(within(day('2026-09-21')).getByRole('button', { name: /4pm/ }));
+    // 16:00Z is noon in New York.
+    await user.click(within(day('2026-09-21')).getByRole('button', { name: /12pm/ }));
 
-    expect(screen.getByText(/^Your time:/)).toBeInTheDocument();
-    expect(screen.getByText(/Ada.s time:/)).toBeInTheDocument();
+    expect(
+      screen.getByText(new Date('2026-09-21T16:00:00Z').toLocaleString(undefined, { timeZone: 'America/New_York' }))
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Ada.s time:/)).not.toBeInTheDocument();
   });
 
   it('says an outside-your-week slot is a one-off', async () => {
@@ -420,9 +513,43 @@ describe('a week with nothing in it', () => {
     await user.click(screen.getByRole('button', { name: 'Send request' }));
 
     expect(book.onRequest).toHaveBeenCalledTimes(1);
-    expect(new Date((book.onRequest as ReturnType<typeof vi.fn>).mock.calls[0][0]).getTime()).toBe(
-      new Date('2026-09-22T09:00').getTime()
+    // Read in the viewer's zone, UTC here, whatever zone the machine running this is in.
+    expect(new Date((book.onRequest as ReturnType<typeof vi.fn>).mock.calls[0][0]).toISOString()).toBe(
+      '2026-09-22T09:00:00.000Z'
     );
+  });
+
+  // The header says every time is in the viewer's zone, and the confirmation is formatted in it, so
+  // a typed time has to mean the same zone. Kathmandu's +5:45 is nobody's machine zone.
+  describe('in a viewer zone other than the browser one', () => {
+    const viewerTimezone = 'Asia/Kathmandu';
+
+    it('reads the typed time in that zone', async () => {
+      const book = booking();
+      const { user } = setupBooking(book, { viewerTimezone, peerHasSchedule: false, slots: [] });
+
+      await user.type(screen.getByLabelText('Time to request'), '2026-09-22T09:00');
+      await user.click(screen.getByRole('button', { name: 'Send request' }));
+
+      expect(new Date((book.onRequest as ReturnType<typeof vi.fn>).mock.calls[0][0]).toISOString()).toBe(
+        '2026-09-22T03:15:00.000Z'
+      );
+    });
+
+    it('bounds the input at now in that zone', () => {
+      setupBooking(booking(), { viewerTimezone, peerHasSchedule: false, slots: [] });
+      // NOW is 15:00Z, which is 20:45 in Kathmandu.
+      expect(screen.getByLabelText('Time to request')).toHaveAttribute('min', '2026-09-21T20:45');
+    });
+
+    it('confirms the time that was typed', () => {
+      setupBooking(booking({ requestedStart: '2026-09-22T03:15:00.000Z' }), {
+        viewerTimezone,
+        peerHasSchedule: false,
+        slots: [],
+      });
+      expect(screen.getByText(/^Requested /).textContent).toContain('9:00');
+    });
   });
 
   it('stays read-only without a booking caller', () => {

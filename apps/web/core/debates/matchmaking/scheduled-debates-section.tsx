@@ -7,7 +7,8 @@ import Link from 'next/link';
 
 import type { DebateParticipantSummary, ScheduledDebateRequest, UpcomingDebateRoom } from '~/core/debates/api';
 import { useFinishedRoomIds, useUpcomingDebateRooms } from '~/core/debates/rooms/hooks';
-import { sameId } from '~/core/debates/rooms/room-presence';
+import { UNNAMED_OPPONENT } from '~/core/debates/rooms/room-copy';
+import { opponentName, opponentOf, requestForRoom } from '~/core/debates/rooms/room-opponent';
 import { debateRoomPath } from '~/core/debates/rooms/room-routes';
 import { useOpenScheduledRequests } from '~/core/debates/rooms/scheduled-awaiting';
 import { useRespondToScheduledDebate, useScheduledDebates } from '~/core/debates/rooms/scheduling-hooks';
@@ -18,6 +19,7 @@ import { Date as DateIcon } from '~/design-system/icons/date';
 import { Text } from '~/design-system/text';
 
 import { useDebatePeople } from './hooks';
+import { hubAnalyticsAttributes } from './hub-analytics';
 import { HubCardList, hubCardMotion } from './hub-motion';
 import { HubPillButton, hubPillClassName } from './hub-pill-button';
 import { RequestParties } from './request-parties';
@@ -59,8 +61,14 @@ export function ScheduledDebatesSection({ content }: { content: ScheduledContent
     <>
       {(upcoming.length > 0 || roomsError) && (
         <Section label="Upcoming debates">
-          {upcoming.map(({ room, opponentUserId }) => (
-            <UpcomingRow key={room.room_id} room={room} opponent={lookUp(opponentUserId)} viewer={viewer} />
+          {upcoming.map(({ room, opponentUserId, scheduledEndAt }) => (
+            <UpcomingRow
+              key={room.room_id}
+              room={room}
+              scheduledEndAt={scheduledEndAt}
+              opponent={lookUp(opponentUserId)}
+              viewer={viewer}
+            />
           ))}
           {roomsError && <ReadFailed>Could not read your upcoming debates: {roomsError.message}</ReadFailed>}
         </Section>
@@ -107,12 +115,16 @@ export type ScheduledContent = {
   roomsError: Error | null;
 };
 
-/** A room carries no participants, so its opponent comes from the request that booked it. */
-export type UpcomingRoomRow = { room: UpcomingDebateRoom; opponentUserId: string | null };
+/** A room's opponent and scheduled end come from the request that booked it. */
+export type UpcomingRoomRow = {
+  room: UpcomingDebateRoom;
+  opponentUserId: string | null;
+  scheduledEndAt: string | null;
+};
 
-export function useScheduledContent(enabled: boolean): ScheduledContent {
-  const requests = useScheduledDebates(enabled);
-  const rooms = useUpcomingDebateRooms(enabled);
+export function useScheduledContent(): ScheduledContent {
+  const requests = useScheduledDebates();
+  const rooms = useUpcomingDebateRooms();
   const viewerId = useCurrentGeoChatUserId();
 
   const rows = requests.data?.requests;
@@ -120,20 +132,20 @@ export function useScheduledContent(enabled: boolean): ScheduledContent {
   const answerable = useOpenScheduledRequests(rows);
 
   const roomList = React.useMemo(() => rooms.data?.rooms ?? [], [rooms.data]);
-  const finishedRoomIds = useFinishedRoomIds(roomList, enabled);
+  const finishedRoomIds = useFinishedRoomIds(roomList);
 
   const upcoming = React.useMemo(
     () =>
       roomList
         .filter(room => !finishedRoomIds.has(room.room_id))
-        .map(room => ({
-          room,
-          opponentUserId: opponentOf(
-            // The room's id is dashless here and dashed on the request, so these never match as written.
-            (rows ?? []).find(request => request.room_id && sameId(request.room_id, room.room_id)),
-            viewerId
-          ),
-        })),
+        .map(room => {
+          const request = requestForRoom(rows, room.room_id);
+          return {
+            room,
+            opponentUserId: opponentOf(request, viewerId),
+            scheduledEndAt: request?.scheduled_end_at ?? null,
+          };
+        }),
     [finishedRoomIds, roomList, rows, viewerId]
   );
 
@@ -142,16 +154,9 @@ export function useScheduledContent(enabled: boolean): ScheduledContent {
     () => (rows ?? []).flatMap(request => request.participants.map(participant => participant.user_id)),
     [rows]
   );
-  const people = useGeoChatUserSummaries(participantIds, enabled);
+  const people = useGeoChatUserSummaries(participantIds, true);
 
   return { answerable, upcoming, people, requestsError: requests.error ?? null, roomsError: rooms.error ?? null };
-}
-
-/** `null` whenever the answer would be a guess, so nothing reads the viewer as their own opponent. */
-function opponentOf(request: ScheduledDebateRequest | undefined, viewerId: string | null) {
-  if (!request || !viewerId) return null;
-  if (!request.participants.some(participant => sameId(participant.user_id, viewerId))) return null;
-  return request.participants.find(participant => !sameId(participant.user_id, viewerId))?.user_id ?? null;
 }
 
 /**
@@ -184,10 +189,12 @@ function useParticipantLookup(enabled: boolean, requestPeople: DebateParticipant
 /** An open room says so and offers the way in; one that is not yet open says when. */
 function UpcomingRow({
   room,
+  scheduledEndAt,
   opponent,
   viewer,
 }: {
   room: UpcomingDebateRoom;
+  scheduledEndAt: string | null;
   opponent: DebateParticipantSummary | null;
   viewer: DebateParticipantSummary | null;
 }) {
@@ -195,10 +202,16 @@ function UpcomingRow({
     <ScheduleCard
       opponent={opponent}
       viewer={viewer}
-      when={room.due ? 'Starting now' : formatDebateTime(room.starts_at)}
+      when={
+        room.due
+          ? `Starting now${scheduledEndAt ? ` · Ends at ${formatTime(scheduledEndAt)}` : ''}`
+          : scheduledEndAt
+            ? formatDebateSlot(room.starts_at, scheduledEndAt)
+            : formatDebateTime(room.starts_at)
+      }
       status={
         room.others_present
-          ? `${shortName(opponent)} is waiting for you now`
+          ? `${opponentName(opponent)} is waiting for you now`
           : room.joinable
             ? 'The room is open'
             : `Opens at ${formatTime(room.opens_at)}`
@@ -206,7 +219,11 @@ function UpcomingRow({
       urgent={room.others_present}
       actions={
         room.joinable && (
-          <Link href={debateRoomPath(room.room_id)} className={JOIN_PILL}>
+          <Link
+            href={debateRoomPath(room.room_id)}
+            className={JOIN_PILL}
+            {...hubAnalyticsAttributes('Join scheduled debate', 'join_scheduled_debate')}
+          >
             Join debate
           </Link>
         )
@@ -244,10 +261,23 @@ function ScheduledRow({
         request.viewer_must_answer && (
           // Decline first, Accept primary on the right: the order every other request card uses.
           <div className="grid grid-cols-2 gap-2">
-            <HubPillButton onClick={() => onAnswer(request.request_id, false)} disabled={busy}>
+            {/* Labelled apart from the instant request cards' Accept and Decline, which would
+                otherwise share their labels and could not be told from these in the data. */}
+            <HubPillButton
+              analyticsLabel="Debate hub Decline scheduled debate"
+              analyticsIntent="decline_scheduled_debate"
+              onClick={() => onAnswer(request.request_id, false)}
+              disabled={busy}
+            >
               Decline
             </HubPillButton>
-            <HubPillButton variant="primary" onClick={() => onAnswer(request.request_id, true)} disabled={busy}>
+            <HubPillButton
+              variant="primary"
+              analyticsLabel="Debate hub Accept scheduled debate"
+              analyticsIntent="accept_scheduled_debate"
+              onClick={() => onAnswer(request.request_id, true)}
+              disabled={busy}
+            >
               Accept
             </HubPillButton>
           </div>
@@ -325,8 +355,6 @@ function ScheduleCard({
   );
 }
 
-const UNNAMED_OPPONENT = 'Your opponent';
-
 /** Stands in until the graph or roster names them; its empty space id keeps it unlinked. */
 const UNKNOWN_OPPONENT: DebateParticipantSummary = {
   user_id: '',
@@ -334,10 +362,6 @@ const UNKNOWN_OPPONENT: DebateParticipantSummary = {
   display_name: UNNAMED_OPPONENT,
   avatar_cid: null,
 };
-
-function shortName(opponent: DebateParticipantSummary | null) {
-  return opponent?.display_name || UNNAMED_OPPONENT;
-}
 
 function ReadFailed({ children }: { children: React.ReactNode }) {
   return (

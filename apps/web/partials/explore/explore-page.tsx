@@ -6,16 +6,13 @@ import type { FeaturedSpace } from '~/core/io/subgraph/fetch-featured-spaces';
 import { useFeatureFlag } from '~/core/state/feature-flags';
 
 import { EntityPageSidebarLayout } from '~/partials/entity-page/entity-page-sidebar-layout';
-import { EntityFeed, type SpaceOption } from '~/partials/feed/entity-feed';
+import { EntityFeed } from '~/partials/feed/entity-feed';
 
 import { ExploreEmailCapturePopup } from './email-capture-popup';
 import { ExploreSidePanel } from './explore-side-panel';
 import { ExploreWelcomeBanner } from './explore-welcome-banner';
 
 type Props = {
-  initialSpaceOptions: SpaceOption[];
-  /** Joined or pending — what the space filter opens on. */
-  memberSpaceIds: string[];
   featuredSpaces: FeaturedSpace[];
   featuredRankings: FeaturedRanking[];
   pendingMembershipSpaceIds: string[];
@@ -24,8 +21,6 @@ type Props = {
 };
 
 export function ExplorePage({
-  initialSpaceOptions,
-  memberSpaceIds,
   featuredSpaces,
   featuredRankings,
   pendingMembershipSpaceIds,
@@ -61,18 +56,18 @@ export function ExplorePage({
           reachable at all. It renders nothing until it is shown, so it costs the tab order
           nothing the rest of the time. */}
       <ExploreEmailCapturePopup />
-      <main className="min-w-0 pt-5">
+      <main className="min-w-0 pt-2">
         <div className="mx-auto w-full max-w-[880px]">
           <ExploreWelcomeBanner />
         </div>
         <EntityFeed
           apiEndpoint="/api/explore/feed"
-          initialSpaceOptions={initialSpaceOptions}
-          memberSpaceIds={memberSpaceIds}
           initialTime="month"
           initialSort="best"
+          // No space or type menus: the feed spans every space the reader may see, and the server
+          // decides which types it holds (Debate and Claim — see `DEFAULT_EXPLORE_TYPE_IDS`).
           showSortFilter
-          showTypeFilter
+          compactHeader
           dividerBeforeFeed
           titleOpensSidePanel
           claimCardVariant="debate-panel-mobile"

@@ -933,11 +933,15 @@ export async function getScheduleOverlaps(
   });
 }
 
-/** One person the viewer shares availability with (geo-chat#137, GEO-2937). */
+/** One person the viewer could schedule with, whether or not they share a time (geo-chat#137, GEO-2937). */
 export type SchedulablePerson = {
   user: DebateParticipantSummary;
   online: boolean;
-  /** Shared 30-minute slots, soonest first, capped by `limit`. Can include slots already past today. */
+  /**
+   * Shared 30-minute slots, soonest first, capped by `limit`. Empty when they share none. Only
+   * times still ahead when geo-chat answered (geo-chat#165), though they can pass before the next
+   * fetch.
+   */
   slots: ScheduleOverlapSlot[];
   /** More overlap exists than `limit` returned. */
   truncated: boolean;
@@ -953,7 +957,10 @@ export type SchedulablePeopleResponse = {
   truncated: boolean;
 };
 
-/** Everyone, online or not, who shares at least one free slot with the viewer (GEO-2937). */
+/**
+ * Everyone, online or not, with free time in the window; those sharing a slot with the viewer come
+ * first (GEO-2937).
+ */
 export async function listSchedulablePeople(
   { days, limit }: { days: number; limit: number },
   getPrivyIdentityToken: GetPrivyIdentityToken,
@@ -981,6 +988,24 @@ export async function listSchedulablePeople(
 export async function reportDebateInteraction(getPrivyIdentityToken: GetPrivyIdentityToken, accountKey: string | null) {
   return geoChatRequest<void>('/me/debate-interaction', {
     method: 'POST',
+    auth: true,
+    getPrivyIdentityToken,
+    accountKey,
+  });
+}
+
+/**
+ * Saves the zone this browser is in, so emails geo-chat sends while the person is away render in
+ * it. geo-chat prefers the zone on saved availability and falls back to this one, then to UTC.
+ */
+export async function reportBrowserTimezone(
+  getPrivyIdentityToken: GetPrivyIdentityToken,
+  accountKey: string | null,
+  timezone: string
+) {
+  return geoChatRequest<void>('/me/timezone', {
+    method: 'PUT',
+    body: { timezone },
     auth: true,
     getPrivyIdentityToken,
     accountKey,
@@ -2156,6 +2181,21 @@ export class GeoChatRequestError extends Error {
     this.status = status;
     this.retryAfterMs = retryAfterMs;
   }
+}
+
+/**
+ * A geo-chat failure in analytics terms: its code and status where it has them. Never the message,
+ * which is prose meant for a person and can name one.
+ */
+export function geoChatErrorProperties(error: unknown) {
+  if (error instanceof GeoChatRequestError) {
+    return { error_code: error.code, http_status: error.status, error_name: 'GeoChatRequestError' };
+  }
+  return {
+    error_code: null,
+    http_status: null,
+    error_name: error instanceof Error ? error.name : typeof error,
+  };
 }
 
 /**

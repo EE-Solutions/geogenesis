@@ -8,6 +8,7 @@ import { useAtom, useSetAtom } from 'jotai';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 
+import { ActionContextProvider } from '~/core/action-context-provider';
 import { DEBATES_MODAL } from '~/core/debates/debates-panel-deep-link';
 import { requestsModal } from '~/core/deep-links/modal-deep-link';
 import { useIsMobileLayout } from '~/core/hooks/use-is-mobile-layout';
@@ -23,9 +24,11 @@ import { ClaimsTab } from './claims-tab';
 import { useDebateRequests, useMatchmakingScope } from './hooks';
 import { HubSwap } from './hub-motion';
 import { hubClosesOnArrivalAt } from './hub-navigation';
+import { HUB_ICON_BUTTON_CLASS_NAME } from './hub-pill-button';
 import { LobbyTab } from './lobby-tab';
 import { PeopleTab } from './people-tab';
 import { RequestsTab } from './requests-tab';
+import { ScheduleButton } from './schedule-button';
 import { SetScheduleBanner } from './set-schedule-banner';
 import { SIGNED_OUT_TABS } from './signed-out-tabs';
 import { useDebatesHub } from './use-debates-hub';
@@ -160,7 +163,11 @@ export function DebatesHubPanel() {
   // deliberately not an announced control — leaving Escape, which a phone rarely has, as the only
   // way out. The desktop aside is non-modal, so its toggle stays reachable and the design's
   // header stands.
-  const body = <DebatesHubSurface activeTab={activeTab} onTabChange={setTab} onClose={isMobile ? close : undefined} />;
+  const body = (
+    <ActionContextProvider value={{ overlay: 'debates_hub_sheet', component: 'debate_matchmaking' }}>
+      <DebatesHubSurface activeTab={activeTab} onTabChange={setTab} onClose={isMobile ? close : undefined} />
+    </ActionContextProvider>
+  );
 
   if (isMobile) {
     return createPortal(
@@ -239,6 +246,8 @@ function DebatesHubSurface({ activeTab: requestedTab, onTabChange, onClose }: Su
 
   const requestCount = useRequestsTabCount({ authenticated, activity, requests });
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  // Shared so the banner can hand focus up to the header's calendar when it leaves.
+  const scheduleButtonRef = React.useRef<HTMLButtonElement | null>(null);
 
   // One scroll container is shared by all four tabs, so a scrolled People list would otherwise
   // leave Requests scrolled to the same offset.
@@ -257,6 +266,7 @@ function DebatesHubSurface({ activeTab: requestedTab, onTabChange, onClose }: Su
           Debates
         </Text>
         <div className="flex min-w-0 items-center gap-1">
+          <ScheduleButton ref={scheduleButtonRef} />
           <AvailabilityToggle />
           {onClose ? (
             <button
@@ -265,7 +275,7 @@ function DebatesHubSurface({ activeTab: requestedTab, onTabChange, onClose }: Su
               data-geo-analytics-intent="close_debates_hub"
               aria-label="Close debates"
               onClick={onClose}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-grey-04 transition-colors hover:bg-grey-01 hover:text-text"
+              className={HUB_ICON_BUTTON_CLASS_NAME}
             >
               <CloseSmall />
             </button>
@@ -273,7 +283,7 @@ function DebatesHubSurface({ activeTab: requestedTab, onTabChange, onClose }: Su
         </div>
       </div>
 
-      <SetScheduleBanner />
+      <SetScheduleBanner scheduleButtonRef={scheduleButtonRef} />
 
       {/* Hidden until Privy resolves, not just the body below it. `authenticated` is false during
           restoration, so a row drawn before then is the signed-out one — a returning viewer would

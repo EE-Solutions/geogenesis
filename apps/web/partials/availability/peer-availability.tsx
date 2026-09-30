@@ -5,16 +5,23 @@ import * as React from 'react';
 import cx from 'classnames';
 
 import {
-  LARGE_OFFSET_MINUTES,
   type PeerDay,
   type PeerDaySlot,
   type PeerSchedule,
   formatOffset,
+  formatViewerInstant,
   peerScheduleDays,
+  viewerInputInstant,
+  viewerInputValue,
 } from '~/core/availability/peer-schedule';
+import { type ScheduleEntry, debateAvailabilityViewed } from '~/core/availability/schedule-analytics';
 import { usePeerSchedule } from '~/core/debates/hooks';
+import { debateActionAnalyticsAttributes } from '~/core/debates/matchmaking/hub-analytics';
+import { useEffectOnceWhen } from '~/core/hooks/use-effect-once';
 
 import { Text } from '~/design-system/text';
+
+import { firstName } from '~/partials/profile/claim-response-tag';
 
 /**
  * How many slots a day shows before the expander.
@@ -26,6 +33,14 @@ import { Text } from '~/design-system/text';
 const SLOTS_PER_DAY = 4;
 
 /**
+ * Chip looks, shared with the legend so the key can never drift from what it describes. Green for
+ * a time you both have free, since that is the one worth picking; dashed for theirs alone.
+ */
+export const MUTUAL_SLOT = 'border-solid border-green bg-successTertiary text-text';
+export const PEER_ONLY_SLOT = 'border-dashed border-grey-03 bg-white text-text';
+export const SELECTED_SLOT = 'border-solid border-text bg-text text-white';
+
+/**
  * Supplied by a caller that can act on a picked time, which turns the footer on. Absent, the week
  * stays read-only and no CTA renders.
  */
@@ -35,8 +50,11 @@ export type PeerAvailabilityBooking = {
    * different time"). Only the wording changes; the caller decides what `onRequest` does.
    */
   mode?: 'request' | 'reschedule';
-  /** An instant, not a chip: a week with no slots is still requestable (GEO-2938). */
-  onRequest: (startsAt: string) => void;
+  /**
+   * An instant, not a chip: a week with no slots is still requestable (GEO-2938). `viewerIsFree` is
+   * the picked chip's, for analytics; `null` for a time typed in by hand.
+   */
+  onRequest: (startsAt: string, pick?: { viewerIsFree: boolean | null }) => void;
   pending: boolean;
   error: string | null;
   /** The instant the server accepted, which swaps the footer for a confirmation. */
@@ -48,7 +66,7 @@ export type PeerAvailabilityBooking = {
  *
  * ## It shows their week, not the overlap
  *
- * The grid is *their* availability; the viewer's own picks solid over dashed, never whether a
+ * The grid is *their* availability; the viewer's own picks green over dashed, never whether a
  * slot appears. Intersecting would leave a shared-link recipient with no schedule of their own
  * seeing nothing, which is the case this exists for.
  *
@@ -60,8 +78,13 @@ export type PeerAvailabilityBooking = {
  * Takes a user id and nothing else, so the shareable link that will eventually open this can
  * mount it without this component knowing anything about routing.
  */
-export function PeerAvailability({ userId, peerName, className, booking, initialSelectedStart }: Props) {
+export function PeerAvailability({ userId, peerName, className, booking, initialSelectedStart, entry = null }: Props) {
   const { schedule, enabled, isPending, isError } = usePeerSchedule(userId);
+
+  // Once per opening: the modal mounts this only while open, and a refetch is not a second look.
+  useEffectOnceWhen(schedule !== undefined, () => {
+    if (schedule) debateAvailabilityViewed(schedule, { entry, bookable: Boolean(booking) });
+  });
 
   // Signed out there is no viewer to compare against, so the question cannot be asked rather than
   // having failed — a distinction worth drawing, since one of these is fixable by signing in.
@@ -91,6 +114,8 @@ type Props = {
   className?: string;
   /** A slot picked before the week opened, e.g. a time chip on a People tab row. */
   initialSelectedStart?: string | null;
+  /** What opened this week, for analytics. */
+  entry?: ScheduleEntry | null;
 };
 
 /**
@@ -134,7 +159,8 @@ export function PeerAvailabilityView({
   const hasAnySlot = days.some(day => day.slots.length > 0);
 
   // A week crossing a DST boundary holds two genuinely different offsets, so the header names one
-  // only when every slot agrees. Each chip decides for itself whether to carry their local time.
+  // only when every slot agrees. The header is the only place their zone appears: every time in
+  // the modal is the viewer's own, since a second clock on each chip read as noise.
   const offsets = new Set(days.flatMap(day => day.slots).map(slot => slot.offsetMinutes));
   const uniformOffset = offsets.size === 1 ? [...offsets][0] : null;
 
@@ -169,7 +195,7 @@ export function PeerAvailabilityView({
                 booking={booking}
                 clock={clock}
                 peerName={name}
-                peerTimezone={schedule.peerTimezone}
+                viewerTimezone={schedule.viewerTimezone}
                 notBefore={notBefore}
               />
             )
@@ -188,6 +214,7 @@ export function PeerAvailabilityView({
               the times you both have free.
             </Hint>
           )}
+          <Legend peerName={name} showMutual={schedule.viewerHasSchedule} />
           <WeekGrid
             days={days}
             peerName={name}
@@ -202,7 +229,7 @@ export function PeerAvailabilityView({
               startsAt={selectedStart}
               viewerIsFree={selectedSlot?.viewerIsFree ?? null}
               peerName={name}
-              peerTimezone={schedule.peerTimezone}
+              viewerTimezone={schedule.viewerTimezone}
             />
           )}
         </>
@@ -218,33 +245,26 @@ function BookingFooter({
   startsAt,
   viewerIsFree,
   peerName,
-  peerTimezone,
+  viewerTimezone,
 }: {
   booking: PeerAvailabilityBooking;
   clock: () => number;
   startsAt: string | null;
   viewerIsFree: boolean | null;
   peerName: string;
-  peerTimezone?: string | null;
+  viewerTimezone: string;
 }) {
-  if (booking.requestedStart) return <BookedHint booking={booking} peerName={peerName} />;
-
-  const theirTime = startsAt && peerTimezone ? formatIn(startsAt, peerTimezone) : null;
+  if (booking.requestedStart) {
+    return <BookedHint booking={booking} peerName={peerName} viewerTimezone={viewerTimezone} />;
+  }
 
   return (
     <div className="flex shrink-0 flex-col gap-2">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-col">
-          <Text as="span" variant="footnote" color="grey-04">
-            {startsAt ? `Your time: ${formatIn(startsAt)}` : 'Pick a time above.'}
-          </Text>
-          {theirTime && (
-            <Text as="span" variant="footnote" color="grey-04">
-              {peerName}&rsquo;s time: {theirTime}
-            </Text>
-          )}
-        </div>
-        <SendRequest booking={booking} clock={clock} startsAt={startsAt} />
+        <Text as="span" variant="footnote" color="grey-04" className="min-w-0">
+          {startsAt ? formatViewerInstant(startsAt, viewerTimezone) : 'Pick a time above.'}
+        </Text>
+        <SendRequest booking={booking} clock={clock} startsAt={startsAt} viewerIsFree={viewerIsFree} />
       </div>
 
       {/* A slot outside your own week is a one-off, and saying so is what keeps it from reading as
@@ -265,19 +285,27 @@ function BookingFooter({
 }
 
 /** What the footer says once the server has accepted the time. */
-function BookedHint({ booking, peerName }: { booking: PeerAvailabilityBooking; peerName: string }) {
+function BookedHint({
+  booking,
+  peerName,
+  viewerTimezone,
+}: {
+  booking: PeerAvailabilityBooking;
+  peerName: string;
+  viewerTimezone: string;
+}) {
   if (!booking.requestedStart) return null;
+  const requested = formatViewerInstant(booking.requestedStart, viewerTimezone);
   if (booking.mode === 'reschedule') {
     return (
       <Hint>
-        Proposed {formatIn(booking.requestedStart)} instead. {peerName} has to accept the new time before the room is
-        booked.
+        Proposed {requested} instead. {peerName} has to accept the new time before the room is booked.
       </Hint>
     );
   }
   return (
     <Hint>
-      Requested {formatIn(booking.requestedStart)}. {peerName} has to accept before the room is booked.
+      Requested {requested}. {peerName} has to accept before the room is booked.
     </Hint>
   );
 }
@@ -286,10 +314,12 @@ function SendRequest({
   booking,
   clock,
   startsAt,
+  viewerIsFree,
 }: {
   booking: PeerAvailabilityBooking;
   clock: () => number;
   startsAt: string | null;
+  viewerIsFree: boolean | null;
 }) {
   // Keyed by the start it was raised for, so picking another time clears it.
   const [passedFor, setPassedFor] = React.useState<string | null>(null);
@@ -300,6 +330,9 @@ function SendRequest({
       <button
         type="button"
         disabled={!startsAt || booking.pending}
+        {...(booking.mode === 'reschedule'
+          ? debateActionAnalyticsAttributes('peer-availability', 'Propose new time', 'reschedule_scheduled_debate')
+          : debateActionAnalyticsAttributes('peer-availability', 'Send request', 'request_scheduled_debate'))}
         onClick={() => {
           if (!startsAt) return;
           // Checked at the click rather than trusted from render: an open modal does not re-render
@@ -309,7 +342,7 @@ function SendRequest({
             return;
           }
           setPassedFor(null);
-          booking.onRequest(startsAt);
+          booking.onRequest(startsAt, { viewerIsFree });
         }}
         className="shrink-0 rounded-full bg-text px-3 py-1.5 text-metadata text-white disabled:opacity-40"
       >
@@ -325,28 +358,31 @@ function SendRequest({
 }
 
 /**
- * A time of the viewer's own, for a week that offers none. `datetime-local` reads as local wall
- * clock, so it is converted to an instant before it leaves here.
+ * A time of the viewer's own, for a week that offers none. `datetime-local` carries no zone, so it
+ * is read in the grid's zone, like every other time here, and converted to an instant before it
+ * leaves.
  */
 function RequestAnyway({
   booking,
   clock,
   peerName,
-  peerTimezone,
+  viewerTimezone,
   notBefore,
 }: {
   booking: PeerAvailabilityBooking;
   clock: () => number;
   peerName: string;
-  peerTimezone?: string | null;
+  viewerTimezone: string;
   notBefore: number;
 }) {
   const [local, setLocal] = React.useState('');
-  const picked = local ? new Date(local) : null;
+  const picked = viewerInputInstant(local, viewerTimezone);
   // geo-chat refuses a past start, so one never leaves here.
   const startsAt = picked && picked.getTime() > notBefore ? picked.toISOString() : null;
 
-  if (booking.requestedStart) return <BookedHint booking={booking} peerName={peerName} />;
+  if (booking.requestedStart) {
+    return <BookedHint booking={booking} peerName={peerName} viewerTimezone={viewerTimezone} />;
+  }
 
   return (
     <div className="mt-3 flex flex-col items-center gap-2">
@@ -357,18 +393,13 @@ function RequestAnyway({
         <input
           type="datetime-local"
           aria-label="Time to request"
-          min={localInputValue(notBefore)}
+          min={viewerInputValue(notBefore, viewerTimezone)}
           value={local}
           onChange={event => setLocal(event.target.value)}
           className="rounded border border-grey-02 px-2 py-1 text-footnote"
         />
-        <SendRequest booking={booking} clock={clock} startsAt={startsAt} />
+        <SendRequest booking={booking} clock={clock} startsAt={startsAt} viewerIsFree={null} />
       </div>
-      {startsAt && peerTimezone && (
-        <Text as="span" variant="footnote" color="grey-04">
-          {peerName}&rsquo;s time: {formatIn(startsAt, peerTimezone)}
-        </Text>
-      )}
       {booking.error && (
         <Text as="p" variant="footnote" color="red-01">
           {booking.error}
@@ -376,20 +407,6 @@ function RequestAnyway({
       )}
     </div>
   );
-}
-
-/** `datetime-local` wants the viewer's own wall clock, with no zone and no seconds. */
-function localInputValue(at: number) {
-  const date = new Date(at);
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-/** `undefined` zone means the viewer's own, which is what `toLocaleString` does by default. */
-function formatIn(iso: string, timeZone?: string | null) {
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return iso;
-  return at.toLocaleString(undefined, timeZone ? { timeZone } : undefined);
 }
 
 /**
@@ -498,6 +515,17 @@ function DayColumn({
               // day can be put back.
               aria-label={expanded ? `Show less on ${dayLabel}` : `+${hidden} more times on ${dayLabel}`}
               aria-expanded={expanded}
+              {...(expanded
+                ? debateActionAnalyticsAttributes(
+                    'peer-availability',
+                    'Show fewer times',
+                    'collapse_peer_availability_day'
+                  )
+                : debateActionAnalyticsAttributes(
+                    'peer-availability',
+                    'Show more times',
+                    'expand_peer_availability_day'
+                  ))}
               onClick={() => setExpanded(current => !current)}
               className="rounded-md px-2 py-1 text-left text-footnote text-grey-04 transition-colors hover:text-text"
             >
@@ -513,7 +541,8 @@ function DayColumn({
 /**
  * One 30-minute slot. Selection lives in the view, so picking one clears the last.
  *
- * Dashed and muted means only they are free; it stays a perfectly ordinary, pickable slot.
+ * Green means you are both free; dashed means only they are, and it stays a perfectly ordinary,
+ * pickable slot.
  */
 function SlotChip({
   slot,
@@ -530,16 +559,11 @@ function SlotChip({
   past?: boolean;
   onSelect: () => void;
 }) {
-  // Per slot rather than per week: a week spanning a DST change carries two offsets, and one can
-  // sit on the far side of the threshold from the other.
-  const showPeerTime = Math.abs(slot.offsetMinutes) >= LARGE_OFFSET_MINUTES;
-
   // The visible chip carries the day in its column and free-vs-not in its border, neither of which
   // survives into an accessible name: without this every chip is a bare time that recurs on all
-  // seven days, and the solid/dashed distinction the view exists to draw is invisible.
+  // seven days, and the green/dashed distinction the view exists to draw is invisible.
   const label = [
     `${dayLabel} at ${slot.label}`,
-    showPeerTime ? `${slot.peerLabel} for ${peerName}` : null,
     slot.viewerIsFree === null
       ? `${peerName} is free`
       : slot.viewerIsFree
@@ -558,23 +582,44 @@ function SlotChip({
       disabled={past}
       data-viewer-free={slot.viewerIsFree === true || undefined}
       data-past={past || undefined}
+      {...debateActionAnalyticsAttributes(
+        'peer-availability',
+        slot.viewerIsFree === true ? 'Mutual slot' : 'Slot',
+        selected ? 'deselect_debate_slot' : 'select_debate_slot'
+      )}
       onClick={onSelect}
       className={cx(
         'rounded-md border px-2 py-1 text-left text-footnote tabular-nums transition-colors',
-        slot.viewerIsFree === true
-          ? 'border-solid border-grey-02 bg-[#F6F6F6] text-text hover:bg-grey-01'
-          : 'border-dashed border-grey-02 bg-transparent text-grey-04 hover:text-text',
-        selected && 'border-solid border-text bg-[#EFE2FF] text-text',
+        selected ? SELECTED_SLOT : slot.viewerIsFree === true ? MUTUAL_SLOT : PEER_ONLY_SLOT,
+        // Here rather than in the shared looks, which the legend's static swatches also wear.
+        !selected && 'hover:border-text',
         past && 'cursor-not-allowed opacity-40'
       )}
     >
-      <span>{slot.label}</span>
-      {showPeerTime && (
-        <span className="block text-grey-04">
-          {slot.peerLabel} <span className="sr-only">their time</span>
-        </span>
-      )}
+      {slot.label}
     </button>
+  );
+}
+
+/** What green and dashed mean, drawn with the chips' own classes. */
+function Legend({ peerName, showMutual }: { peerName: string; showMutual: boolean }) {
+  return (
+    <ul aria-label="Legend" className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1">
+      {/* With no week of your own nothing can be mutual, and the hint above already says so. */}
+      {showMutual && <LegendItem swatch={MUTUAL_SLOT}>You&rsquo;re both free</LegendItem>}
+      <LegendItem swatch={PEER_ONLY_SLOT}>{firstName(peerName) ?? peerName} is free</LegendItem>
+    </ul>
+  );
+}
+
+function LegendItem({ swatch, children }: { swatch: string; children: React.ReactNode }) {
+  return (
+    <li className="flex items-center gap-1.5">
+      <span aria-hidden className={cx('h-3 w-5 shrink-0 rounded-sm border', swatch)} />
+      <Text as="span" variant="footnote" color="grey-04">
+        {children}
+      </Text>
+    </li>
   );
 }
 
