@@ -125,8 +125,8 @@ const ERROR_RECONNECT_COOLDOWN_MS = 60_000;
 const MAX_INVALIDATION_RETRIES = 3;
 const BROAD_INVALIDATION_KEY = 'debates:all';
 /**
- * The participant-positions read pages through the graph 500 rows at a time and already polls every
- * 20s, so a busy space's `claims_changed` stream only needs to nudge it, not drive it.
+ * The participant-positions read pages through the graph and already polls every 20s, so a busy
+ * space's `claims_changed` stream only needs to nudge it, not drive it.
  */
 const PARTICIPANT_POSITIONS_THROTTLE_MS = 10_000;
 const PARTICIPANT_POSITIONS_INVALIDATION_KEY = 'participant-positions';
