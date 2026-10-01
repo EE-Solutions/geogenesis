@@ -43,6 +43,7 @@ import { Entity, SearchResult } from '~/core/types';
 import { spacesFromRoutingProjections } from '~/core/utils/entity/entities';
 import { sortSpaceIdsByRank } from '~/core/utils/space/space-ranking';
 
+import { createAliasBatcher } from './alias-batcher';
 import { allEntitiesConnectionDocument } from './all-entities-connection-document';
 import { debateTranscriptClaimsDocument, debateTranscriptClaimsVariables } from './debate-transcript-claims-document';
 import { type DebateVoteBacklinksPageQuery, debateVoteBacklinksPageDocument } from './debate-vote-backlinks-document';
@@ -529,21 +530,20 @@ export function getRelationsByToEntityIds(
   });
 }
 
+const relationsByFromEntityIdLoader = createAliasBatcher(relationsByFromEntityIdQuery, data =>
+  data.relations
+    ? data.relations.map(r => RelationDecoder.decode(r)).filter((r): r is NonNullable<typeof r> => r !== null)
+    : []
+);
+
+/** Batched with other reads in the same window (see `createAliasBatcher`). */
 export function getRelationsByFromEntityId(
   fromEntityId: string,
   typeId: string,
   spaceId: string,
   signal?: AbortController['signal']
 ) {
-  return graphql({
-    query: relationsByFromEntityIdQuery,
-    decoder: data =>
-      data.relations
-        ? data.relations.map(r => RelationDecoder.decode(r)).filter((r): r is NonNullable<typeof r> => r !== null)
-        : [],
-    variables: { fromEntityId, typeId, spaceId },
-    signal,
-  });
+  return relationsByFromEntityIdLoader({ fromEntityId, typeId, spaceId }, signal);
 }
 
 export type EntityTiebreakerData = {
@@ -658,14 +658,17 @@ function commentConnectionVariables(targetEntityId: string) {
   };
 }
 
-/** Counts Comment entities connected to the target by a "Reply to" relation. */
+const entityCommentCountLoader = createAliasBatcher(
+  EntityCommentCountDocument,
+  (data: EntityCommentCountQuery) => data.entitiesConnection?.totalCount ?? 0
+);
+
+/**
+ * Counts Comment entities connected to the target by a "Reply to" relation. Batched with other
+ * counts in the same window (see `createAliasBatcher`).
+ */
 export function getEntityCommentCount(entityId: string, signal?: AbortController['signal']) {
-  return graphql({
-    query: EntityCommentCountDocument,
-    decoder: (data: EntityCommentCountQuery) => data.entitiesConnection?.totalCount ?? 0,
-    variables: commentConnectionVariables(entityId),
-    signal,
-  });
+  return entityCommentCountLoader(commentConnectionVariables(entityId), signal);
 }
 
 /**
@@ -1449,6 +1452,13 @@ export function getProperties(ids: string[], signal?: AbortController['signal'])
   });
 }
 
+const entityResponseCountsLoader = createAliasBatcher(entityResponseCountsQuery, data => {
+  const counts = data.votesCountByObjectIdAndObjectTypeAndSpaceIdAndVoteKind;
+  if (!counts) return null;
+  return { positive: Number(counts.positive), negative: Number(counts.negative) };
+});
+
+/** Batched with other counts in the same window (see `createAliasBatcher`). */
 export function getEntityResponseCounts(
   entityId: string,
   spaceId: string,
@@ -1456,16 +1466,7 @@ export function getEntityResponseCounts(
   objectType: ResponseObjectType = 0, // objectType: 0 = Entity, 1 = Relation
   signal?: AbortController['signal']
 ) {
-  return graphql({
-    query: entityResponseCountsQuery,
-    decoder: data => {
-      const counts = data.votesCountByObjectIdAndObjectTypeAndSpaceIdAndVoteKind;
-      if (!counts) return null;
-      return { positive: Number(counts.positive), negative: Number(counts.negative) };
-    },
-    variables: entityResponseQueryVariables(entityId, spaceId, objectType, responseKind),
-    signal,
-  });
+  return entityResponseCountsLoader(entityResponseQueryVariables(entityId, spaceId, objectType, responseKind), signal);
 }
 
 export function getUserEntityResponse(
