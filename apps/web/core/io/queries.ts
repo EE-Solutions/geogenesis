@@ -788,13 +788,11 @@ export function getEntityBacklinks(entityId: string, spaceId?: string, signal?: 
   });
 }
 
+const spaceLoader = createAliasBatcher(spaceQuery, data => (data.space ? SpaceDecoder.decode(data.space) : null));
+
+/** Batched with other space reads in the same window (see `createAliasBatcher`). */
 export function getSpace(spaceId: string, signal?: AbortController['signal']) {
-  return graphql({
-    query: spaceQuery,
-    decoder: data => (data.space ? SpaceDecoder.decode(data.space) : null),
-    variables: { id: spaceId },
-    signal,
-  });
+  return spaceLoader({ id: spaceId }, signal);
 }
 
 export function getSpaces(
