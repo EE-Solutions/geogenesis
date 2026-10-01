@@ -5,9 +5,9 @@ import * as React from 'react';
 /**
  * The bottom-of-list sentinel that pulls the next page in.
  *
- * The same one the explore feed uses, down to the `8000px` margin: the next page
- * is asked for well before the reader reaches the end, so a list they are
- * scrolling never stops under them. Extracted because the three record tabs
+ * The same one the explore feed uses, down to the `1500px` margin: the next page
+ * is asked for about two screens before the reader reaches the end, so a list
+ * they are scrolling rarely stops under them, without mounting pages far ahead. Extracted because the three record tabs
  * each need it and a hand-rolled observer per tab is three chances to get the
  * dependency list wrong.
  */
@@ -40,7 +40,7 @@ export function useInfiniteSentinel({
       entries => {
         if (entries[0]?.isIntersecting && !isFetchingNextPage) fetchNextPage();
       },
-      { rootMargin: '8000px' }
+      { rootMargin: '1500px' }
     );
 
     observer.observe(element);

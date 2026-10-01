@@ -470,7 +470,9 @@ export function EntityFeed({
           void fetchNextPage();
         }
       },
-      { rootMargin: '8000px' }
+      // About two screens ahead: every fetched page stays mounted, so loading further ahead only
+      // adds cards, queries and memory before the reader gets there.
+      { rootMargin: '1500px' }
     );
     io.observe(el);
     return () => io.disconnect();

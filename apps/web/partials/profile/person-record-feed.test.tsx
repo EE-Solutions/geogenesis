@@ -91,7 +91,7 @@ describe('PersonRecordFeed', () => {
   /**
    * ...but it does have to say so.
    *
-   * The sentinel stops on `isError` — it must, or the 8000px margin turns one
+   * The sentinel stops on `isError` — it must, or the 1500px margin turns one
    * failing page into a loop — so nothing will ask again on its own. Keeping the
    * rows without a word left a 208-claim record looking like a complete 20-claim
    * one, with nothing to press.

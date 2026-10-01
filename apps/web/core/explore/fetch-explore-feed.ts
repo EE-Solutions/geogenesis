@@ -973,7 +973,7 @@ export async function fetchExploreFeed(args: {
 
   // A window that survives none of the above is not the end of the feed, and returning it as an
   // empty page is what makes it behave like one — badly (GEO-2835 review). The client's sentinel
-  // has an 8000px rootMargin, so with nothing rendered it stays intersecting and refires the
+  // has a 1500px rootMargin, so with nothing rendered it stays intersecting and refires the
   // instant the request settles; an empty page that still carries a cursor is therefore an
   // unbounded loop of round trips that get slower with depth, not a pause.
   //

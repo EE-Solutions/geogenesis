@@ -95,7 +95,7 @@ function CommunityCallCardBody({ item, actions, titleOpensSidePanel }: CardBodyP
 /**
  * Debates get the same custom rendition they have on the full-screen `/debates` feed — the two
  * debater videos with winner voting — from `DebateExploreFeedCard` (added in #2129), which
- * viewport-gates its geo-chat lookups (the feed pre-mounts cards ~8000px below the fold, so an
+ * viewport-gates its geo-chat lookups (the feed pre-mounts cards ~1500px below the fold, so an
  * ungated debate would start fetching video on mount) and falls back to the generic card whenever
  * the debate can't actually be watched. Everything else renders one of the bodies below.
  */

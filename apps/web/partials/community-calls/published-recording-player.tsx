@@ -43,6 +43,8 @@ export function PublishedRecordingPlayer({
         onError={onError}
         controls
         playsInline
+        // Feed cards mount this for every recording; fetch only metadata until played.
+        preload="metadata"
         className={cx('w-full bg-text', videoClassName ?? 'aspect-video rounded-lg')}
       />
 
