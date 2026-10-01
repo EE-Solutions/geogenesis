@@ -26,6 +26,7 @@ import type { ClaimCardVariant } from '~/partials/explore/claim-explore-feed-car
 import { ExploreFeedCard } from '~/partials/explore/explore-feed-card';
 
 import { ExploreTypeFilterMenu } from './explore-type-filter-menu';
+import { OffscreenCard } from './offscreen-card';
 
 function LoadingSkeleton() {
   return (
@@ -652,15 +653,16 @@ export function EntityFeed({
           <p className="text-browseMenu text-grey-04">No entities match these filters yet.</p>
         ) : (
           items.map((item, index) => (
-            <ExploreFeedCard
-              itemPosition={index + 1}
-              key={`${item.entityId}-${item.spaceId}`}
-              item={item}
-              hideSpaceLink={lockedSpaceId != null}
-              hideJoinButton={lockedSpaceId != null}
-              titleOpensSidePanel={titleOpensSidePanel}
-              claimCardVariant={claimCardVariant}
-            />
+            <OffscreenCard key={`${item.entityId}-${item.spaceId}`}>
+              <ExploreFeedCard
+                itemPosition={index + 1}
+                item={item}
+                hideSpaceLink={lockedSpaceId != null}
+                hideJoinButton={lockedSpaceId != null}
+                titleOpensSidePanel={titleOpensSidePanel}
+                claimCardVariant={claimCardVariant}
+              />
+            </OffscreenCard>
           ))
         )}
         <div ref={sentinelRef} className="h-4 w-full" aria-hidden />
