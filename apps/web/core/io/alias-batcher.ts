@@ -74,17 +74,8 @@ function abortError() {
   return Object.assign(new Error('The operation was aborted'), { name: 'AbortError', isAbort: true });
 }
 
-/**
- * Coalesces single-item reads of one query into aliased multi-item requests (GEO-3067).
- *
- * Feed cards and table rows each ask for their own count or relation as they mount, which cost one
- * request per item (e.g. ~90-160 EntityResponseCounts per page). The loader keeps each caller's
- * contract: same variables, same decoded result, its own rejection. Only the browser batches; on the
- * server each call runs as before.
- *
- * A failed batch is retried item by item, so one bad item can't fail its neighbours. A caller that
- * aborts is rejected on its own; the shared request carries on for the rest.
- */
+// Coalesces single-item reads into aliased multi-item requests (browser only). A failed batch falls
+// back to one request per item; an aborting caller is dropped without cancelling the shared request.
 export function createAliasBatcher<TDocument extends TypedDocumentNode<any, any>, Decoded>(
   document: TDocument,
   decoder: (data: TDocument extends TypedDocumentNode<infer R, any> ? R : never) => Decoded
