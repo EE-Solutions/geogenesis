@@ -13,8 +13,11 @@ export type DebatePageLoadStage = 'debate_list' | 'anchor_lookup' | 'media_readi
 
 export type DebatePageFeedState =
   | { kind: 'loading'; stage: DebatePageLoadStage }
-  /** The feed fell back to the plain entity page: this debate cannot be watched here. */
-  | { kind: 'unavailable'; detail: 'not_found' | 'not_watchable' | 'not_processed' }
+  /**
+   * The debate cannot be watched here. `removed` is geo-chat's answer that the debate was removed
+   * (GEO-2785) and the page shows its removed state; the rest fall back to the plain entity page.
+   */
+  | { kind: 'unavailable'; detail: 'not_found' | 'not_watchable' | 'not_processed' | 'removed' }
   /** A lookup failed, so the feed shows its error state instead of the debate. */
   | { kind: 'lookup_error' }
   /** The linked debate's card is rendered. */
@@ -25,6 +28,12 @@ export type DebatePagePlayerState = {
   playing: boolean;
   autoplayBlocked: boolean;
   error: boolean;
+  /**
+   * Both URLs are in hand and the card is waiting for both recordings to be able to play before it
+   * starts either (GEO-2965). Deliberately not folded into `ready`, which keeps meaning "URLs in
+   * hand" so `ready_ms` and `media_loading` read the same before and after the hold existed.
+   */
+  pairHeld?: boolean;
 };
 
 export type DebatePageNotPlayedReason =
@@ -56,7 +65,9 @@ export function createDebatePageOutcome({ debateId, emit, now }: { debateId: str
     done = true;
     try {
       emit({
-        measurement_version: 'debate-page-v1',
+        // Not `measurement_version`: the collector rejects any event carrying that key unless it is
+        // `growth-v2` with a measurement contract, and this event has none, so every one was dropped.
+        outcome_version: 'debate-page-v1',
         debate_id: debateId,
         shown_ms: elapsed(shownAt),
         ready_ms: elapsed(readyAt),
@@ -76,6 +87,9 @@ export function createDebatePageOutcome({ debateId, emit, now }: { debateId: str
     if (player?.error) return { reason: 'playback_error', detail: null };
     if (!player?.ready) return { reason: 'media_loading', detail: null };
     if (player.autoplayBlocked) return { reason: 'autoplay_blocked', detail: null };
+    // Still `not_started`, which is what this state was before the hold existed: URLs in hand, no
+    // confirmed start. The detail only says which part of not-starting it was.
+    if (player.pairHeld) return { reason: 'not_started', detail: 'pair_hold' };
     return { reason: 'not_started', detail: null };
   };
 

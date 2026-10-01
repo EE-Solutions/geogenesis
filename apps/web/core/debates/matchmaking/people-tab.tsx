@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import { useAtom } from 'jotai';
 
+import { type AnalyticsProperties } from '~/core/analytics';
 import { personProfileOpened } from '~/core/analytics';
 import { PEER_SCHEDULE_DAYS } from '~/core/availability/peer-schedule';
 import type { ScheduleEntry } from '~/core/availability/schedule-analytics';
@@ -100,10 +101,30 @@ function recordsPending(personIds: string[], records: Map<string, PersonRecord>)
  * With "Online only" off, the default, offline people with free time this week are listed too,
  * ranked by matches alongside everyone online, each with any times they share with the viewer and a
  * Schedule button in place of the request (GEO-2937).
+ *
+ * `dense` (live rail): no sticky chrome; search stays so you can still find a name.
  */
-export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) => void }) {
+/**
+ * `dense` is the live rail (GEO-2726) — see the note on `RequestsTab`. Search stays: a presence
+ * list is the one of the three you actually scan for a name.
+ */
+export function PeopleTab({
+  onTabChange,
+  dense = false,
+}: {
+  /** Only reached from the empty state's action, so the rail need not pass one. */
+  onTabChange?: (tab: DebatesHubTab) => void;
+  dense?: boolean;
+}) {
   const { authenticated } = useGeoChatAuth();
-  const promptSignIn = usePrivySignIn();
+  const promptSignIn = usePrivySignIn(undefined, {
+    analytics: {
+      component: 'debate_matchmaking',
+      auth_control: 'browse_people',
+      auth_continuation: 'repeat',
+      auth_intent: 'start_debate',
+    },
+  });
   // Undefined when signed in, so every path below keeps behaving exactly as it did.
   const onRequireSignIn = authenticated ? undefined : promptSignIn;
 
@@ -122,6 +143,7 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
   const [viewingTimes, setViewingTimes] = React.useState<{
     userId: string;
     name: string;
+    disagreementCount: number | null;
     initialStart?: string;
     entry: ScheduleEntry;
   } | null>(null);
@@ -414,7 +436,7 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
           the people you can no longer ask, and search shouldn't either. Two stickies would both
           claim `top-0` and overlap, and the card is conditional so search couldn't be offset by a
           known height. */}
-      <HubStickyControls>
+      <PeopleControls dense={dense}>
         {outboundChallenge ? <DebateChallengeCard challenge={outboundChallenge} role="requester" /> : null}
         <Input
           withSearchIcon
@@ -439,7 +461,7 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
             ) : undefined
           }
         />
-      </HubStickyControls>
+      </PeopleControls>
 
       {/* Matches the other tabs' inset so content doesn't shift when switching between them. */}
       <div className="px-4 py-3">
@@ -488,6 +510,8 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
           // Exactly one action, and which one follows the same question the message and the note do.
           // A search the viewer can undo gets the undo; a room that is genuinely empty gets somewhere
           // to go, because there is nothing to undo and waiting is the only other option (GEO-2840).
+          // In the rail there is no tab to change to and the claims list is already on screen beside
+          // this, so the "somewhere to go" half has nowhere to send anyone.
           emptyAction={
             filtersExcludedEveryone
               ? searchIsTheOnlyFilter
@@ -499,7 +523,9 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
                       onSpacesClear();
                     },
                   }
-              : { label: 'Explore claims', onClick: () => onTabChange('explore') }
+              : onTabChange
+                ? { label: 'Explore claims', onClick: () => onTabChange('explore') }
+                : undefined
           }
           signInAction={
             onRequireSignIn
@@ -518,15 +544,14 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
                 const isViewer =
                   (currentUserId !== null && person.user_id === currentUserId) ||
                   (personalSpaceId !== null && normId(person.profile_space_id) === normId(personalSpaceId));
+                const matches = isViewer
+                  ? EMPTY_MATCHES
+                  : (matchAnalysis.byProfile.get(normId(person.profile_space_id)) ?? EMPTY_MATCHES);
                 return (
                   <PersonRow
                     key={person.user_id}
                     person={person}
-                    matches={
-                      isViewer
-                        ? EMPTY_MATCHES
-                        : (matchAnalysis.byProfile.get(normId(person.profile_space_id)) ?? EMPTY_MATCHES)
-                    }
+                    matches={matches}
                     matchesBySpace={
                       matchesKnown && !isViewer
                         ? (matchAnalysis.countsByProfileAndSpace.get(normId(person.profile_space_id)) ??
@@ -545,7 +570,14 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
                     onRequireSignIn={onRequireSignIn}
                     onSeeTimes={(peer, opener, entry, initialStart) => {
                       seeTimesOpenerRef.current = opener;
-                      setViewingTimes({ ...peer, initialStart, entry });
+                      // Captured at the click, like the name: the row may leave the list while open.
+                      // Unknown until the comparison lands, and an unknown count is left unsaid.
+                      setViewingTimes({
+                        ...peer,
+                        disagreementCount: matchesKnown ? matches.length : null,
+                        initialStart,
+                        entry,
+                      });
                     }}
                   />
                 );
@@ -564,9 +596,19 @@ export function PeopleTab({ onTabChange }: { onTabChange: (tab: DebatesHubTab) =
         openerRef={seeTimesOpenerRef}
         initialSelectedStart={viewingTimes?.initialStart}
         entry={viewingTimes?.entry}
+        disagreementCount={viewingTimes?.disagreementCount}
       />
     </div>
   );
+}
+
+/**
+ * Pinned in the panel, plain in the rail. Three pinned headers stacked in one column all claim
+ * `top-0` and overlap, which is what made the rail read as several scroll areas side by side.
+ */
+function PeopleControls({ dense, children }: { dense: boolean; children: React.ReactNode }) {
+  if (dense) return <div className="flex flex-col gap-3 px-4 pb-2">{children}</div>;
+  return <HubStickyControls>{children}</HubStickyControls>;
 }
 
 function PersonRow({
@@ -609,7 +651,7 @@ function PersonRow({
    * Set only when signed out. Pressing Debate then opens Privy instead of sending a request, which
    * would fail at the token exchange with an error the viewer can do nothing about.
    */
-  onRequireSignIn?: () => void;
+  onRequireSignIn?: (properties?: AnalyticsProperties) => void;
   onSeeTimes: (
     peer: { userId: string; name: string },
     opener: HTMLElement | null,
@@ -723,7 +765,11 @@ function PersonRow({
             {...hubAnalyticsAttributes('See times', 'open_peer_availability')}
             onClick={event =>
               onRequireSignIn
-                ? onRequireSignIn()
+                ? onRequireSignIn({
+                    target_id: person.profile_space_id,
+                    target_type: 'space',
+                    auth_control: 'see_times',
+                  })
                 : onSeeTimes(
                     { userId: person.user_id, name: speakerLabel(person) },
                     event.currentTarget,
@@ -754,7 +800,11 @@ function PersonRow({
           <HubPillButton
             onClick={() =>
               onRequireSignIn
-                ? onRequireSignIn()
+                ? onRequireSignIn({
+                    target_id: person.profile_space_id,
+                    target_type: 'space',
+                    auth_control: 'start_debate',
+                  })
                 : createChallenge.mutate({ recipient_profile_space_id: person.profile_space_id })
             }
             // `in_debate` holds signed out too: it means this person is in an active debate right now,

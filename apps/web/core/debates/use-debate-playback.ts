@@ -4,14 +4,15 @@ import * as React from 'react';
 
 import { atom, useAtom } from 'jotai';
 
+import { reportEvent } from '~/core/telemetry/logger';
+
 import type { Debate } from './api';
-import { useDebateMedia, useDebateTranscript, useRecordingUrl } from './hooks';
+import { useDebateMedia, useDebateTranscript, useRecordingPlaybackUrl } from './hooks';
 import {
   PLAYBACK_END_EPSILON_SECONDS,
   type PlayBothOutcome,
   type TurnState,
   clampSeconds,
-  normalizeTurnDurationsMs,
   pairPlayhead,
   participantForSlot,
   playBothWithMutedFallback,
@@ -23,6 +24,7 @@ import {
   turnSpansFromSegments,
   turnStateForTime,
   turnStateFromSegments,
+  usableTurnDurationsMs,
 } from './playback-utils';
 
 type PlaybackUrls = {
@@ -103,6 +105,22 @@ const STALL_EPSILON_SECONDS = 0.001;
  */
 const documentIsHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
+/** Closer than this, a paused element is already where it is being sent. */
+const SEEK_NOOP_EPSILON_SECONDS = 0.001;
+
+/**
+ * Put an element at `seconds`, unless a paused one is already there (GEO-2965).
+ *
+ * Assigning `currentTime` its own value is still a seek: the element drops back below
+ * `HAVE_FUTURE_DATA` and has to re-establish playback from the demuxer. On a pair the hold has just
+ * waited on until both could play, that one needless seek per element is what let them start apart
+ * again. A *playing* element is always written, because its position moves under the comparison.
+ */
+function moveTo(video: HTMLVideoElement, seconds: number) {
+  if (video.paused && Math.abs(video.currentTime - seconds) < SEEK_NOOP_EPSILON_SECONDS) return;
+  video.currentTime = seconds;
+}
+
 /**
  * Drives the two synchronized debater recordings for a single debate: loads the
  * per-slot playback URLs, keeps the videos in lockstep, tracks the active turn
@@ -113,21 +131,25 @@ const documentIsHidden = () => typeof document !== 'undefined' && document.visib
 // below recompute on each one.
 const NO_TRANSCRIPT_SEGMENTS: NonNullable<ReturnType<typeof useDebateTranscript>['data']>['segments'] = [];
 
-/**
- * geo-chat presigns recording URLs for 15 minutes. A card that re-attaches its media after longer
- * than this re-signs first rather than handing a <video> a URL that is about to fail (GEO-3067).
- */
-const RECORDING_URL_REUSE_MS = 10 * 60_000;
+// Presigns last 15 minutes and `lookup` may return one cached for 5, so a card re-attaching
+// later than this re-signs before handing a <video> its URL (GEO-3067).
+const RECORDING_URL_REUSE_MS = 5 * 60_000;
+/** Re-sign attempts after a lapse before the card shows its load error, and the wait between. */
+const MAX_RESIGN_RETRIES = 2;
+const RESIGN_RETRY_DELAY_MS = 2_000;
 
 export function useDebatePlayback(
   debate: Debate,
   enabled: boolean,
   { mediaAttached = true }: { mediaAttached?: boolean } = {}
 ) {
-  const recordingUrlMutation = useRecordingUrl();
+  const recordingUrls = useRecordingPlaybackUrl();
   const [urls, setUrls] = React.useState<PlaybackUrls>({ slot1: null, slot2: null });
-  const urlsSignedAtRef = React.useRef<number | null>(null);
-  const [resigningUrls, setResigningUrls] = React.useState(false);
+  const urlsCommittedAtRef = React.useRef<number | null>(null);
+  // Held URLs aged past the reuse window while released; the player renders no <video> until they
+  // are re-signed, so a lapsed URL never reaches an element.
+  const [urlsLapsed, setUrlsLapsed] = React.useState(false);
+  const [resignAttempt, setResignAttempt] = React.useState(0);
   const [error, setError] = React.useState<string | null>(null);
   const [playing, setPlaying] = React.useState(false);
   const [userPaused, setUserPaused] = React.useState(false);
@@ -159,6 +181,21 @@ export function useDebatePlayback(
   const slot1VideoRef = React.useRef<HTMLVideoElement | null>(null);
   const slot2VideoRef = React.useRef<HTMLVideoElement | null>(null);
   const pendingSeekSecondsRef = React.useRef<number | null>(null);
+  /**
+   * The pair still needs moving to where playback will start (GEO-2965).
+   *
+   * Every debate starts with a seek: the recordings begin before the debate does (GEO-2644), so
+   * debate-time 0 is ~2-5s into each file, and `resumeBoth` seeks both elements there before
+   * playing. Left to the resume, that seek happens *after* the card has waited for both elements
+   * to be able to play — at 0 — so each element re-buffers at its new position and starts on its
+   * own again. Measured on the preview: the two starts landed 15-420ms apart, the same asymmetry
+   * the hold exists to remove, reintroduced one step later.
+   *
+   * So a fresh pair is moved to its starting position as soon as both elements know their shape
+   * (`loadedmetadata`), and the hold then waits for data *there*. The resume computes the same
+   * target, finds both elements already on it, and does not seek at all — see `seekVideosTo`.
+   */
+  const needsPrepositionRef = React.useRef(false);
   /** Slot 1's last forward progress, for telling "stalled" apart from "merely not paused". */
   const primaryProgressRef = React.useRef<{ seconds: number; at: number } | null>(null);
   const lastSyncSeekAtRef = React.useRef(0);
@@ -266,10 +303,13 @@ export function useDebatePlayback(
    * that it must not write `muted` from underneath a retry that depends on it.
    */
   const [isResuming, setIsResuming] = React.useState(false);
-  const getRecordingPlaybackUrlRef = React.useRef(recordingUrlMutation.mutateAsync);
+  const recordingUrlsRef = React.useRef(recordingUrls);
 
+  // `null` when the row's allowance is empty or malformed (GEO-2956). Nothing is invented in its
+  // place: the rendered segments below stand in for it where they exist, and without them the
+  // debate reports `timingError` instead of playing to a made-up schedule.
   const turnDurations = React.useMemo(
-    () => normalizeTurnDurationsMs(debate.turn_durations_ms),
+    () => usableTurnDurationsMs(debate.turn_durations_ms),
     [debate.turn_durations_ms]
   );
 
@@ -296,20 +336,25 @@ export function useDebatePlayback(
     () =>
       turnSegments.length > 0
         ? turnSpansFromSegments(turnSegments)
-        : turnSpansForDurations(debate.first_participant_slot, turnDurations),
+        : turnDurations
+          ? turnSpansForDurations(debate.first_participant_slot, turnDurations)
+          : [],
     [debate.first_participant_slot, turnDurations, turnSegments]
   );
   /**
    * How many turns the format allows for, which is what says whether a round is a rebuttal or a
    * closing. Deliberately off the allowance rather than off `turnSpans`, which counts what the
-   * render kept — see `round-cues.ts`.
+   * render kept — see `round-cues.ts`. Only a row with no usable allowance counts the rendered
+   * segments instead: that is still what was recorded, where the catalog would be a guess.
    */
-  const turnCount = turnDurations.length;
+  const turnCount = turnDurations?.length ?? turnSegments.length;
   const turnStateAt = React.useCallback(
     (seconds: number): TurnState =>
       turnSegments.length > 0
         ? turnStateFromSegments(turnSegments, seconds)
-        : turnStateForTime(debate.first_participant_slot, turnDurations, seconds),
+        : turnDurations
+          ? turnStateForTime(debate.first_participant_slot, turnDurations, seconds)
+          : null,
     [debate.first_participant_slot, turnDurations, turnSegments]
   );
 
@@ -317,9 +362,35 @@ export function useDebatePlayback(
   // this was measured against — so taking the total from the allowance leaves the scrubber
   // running past the end of both recordings.
   const timelineSeconds = React.useMemo(
-    () => (turnSegments.length > 0 ? timelineSecondsForSegments(turnSegments) : timelineSecondsFor(turnDurations)),
+    () =>
+      turnSegments.length > 0
+        ? timelineSecondsForSegments(turnSegments)
+        : turnDurations
+          ? timelineSecondsFor(turnDurations)
+          : 0,
     [turnDurations, turnSegments]
   );
+
+  /**
+   * Neither the row's allowance nor the render's segments can place a turn (GEO-2956).
+   *
+   * Only decided once the media query has settled, because `turn_segments` arrives with it and a
+   * debate with a bad row but a finished render plays fine. No debate the API lists was in this
+   * state on 2026-09-30, which is why it is reported rather than handled more gracefully: if it
+   * ever happens it is a data bug in geo-chat, and the report is how anyone finds out.
+   */
+  const timingUnavailable = turnDurations === null && turnSegments.length === 0 && !mediaQuery.isPending;
+  const timingError = timingUnavailable ? "This debate's turn timings are missing, so it can't be played." : null;
+  React.useEffect(() => {
+    if (!enabled || !timingUnavailable) return;
+    reportEvent({
+      name: 'debate_playback_turn_timing_unavailable',
+      level: 'warning',
+      tags: { turn_format_id: debate.turn_format_id || 'unknown' },
+      extra: { debate_id: debate.id, turn_durations_ms: debate.turn_durations_ms },
+    });
+  }, [debate.id, debate.turn_durations_ms, debate.turn_format_id, enabled, timingUnavailable]);
+
   const slot1Participant = participantForSlot(debate, 1);
   const slot2Participant = participantForSlot(debate, 2);
   const slot1Recording = debate.recordings.find(recording => recording.participant_slot === 1) ?? null;
@@ -359,8 +430,8 @@ export function useDebatePlayback(
   }, [activeSlot, playheadSeconds, transcriptSegments]);
 
   React.useEffect(() => {
-    getRecordingPlaybackUrlRef.current = recordingUrlMutation.mutateAsync;
-  }, [recordingUrlMutation.mutateAsync]);
+    recordingUrlsRef.current = recordingUrls;
+  }, [recordingUrls]);
 
   // Which recordings `urls` currently holds signed URLs for, so re-entering a card does
   // not re-request them (GEO-2895).
@@ -374,8 +445,9 @@ export function useDebatePlayback(
   // placeholder, which is the flicker: a card the viewer had already watched blanking and
   // reloading as they scrolled past it.
   //
-  // `useRecordingUrl` is a mutation rather than a query, so nothing upstream caches this —
-  // every discarded URL is a real round trip.
+  // The lookup itself is cached now (GEO-2965, `useRecordingPlaybackUrl`), so a card the feed
+  // unmounts and remounts reads its URLs back without a round trip. This key still earns its
+  // place: it is what stops a re-activation blanking the URLs a mounted card is already playing.
   //
   // The key is claimed only once URLs are committed, never while a request is in flight. A
   // cleanup that lands mid-flight (StrictMode's dev double-run, or scrolling away and back
@@ -397,6 +469,9 @@ export function useDebatePlayback(
 
     let cancelled = false;
     fetchedForRef.current = null;
+    urlsCommittedAtRef.current = null;
+    setUrlsLapsed(false);
+    setResignAttempt(0);
     setUrls({ slot1: null, slot2: null });
     // A different debate's clocks start over; carrying this across would strand the new one
     // at the old one's position.
@@ -431,8 +506,8 @@ export function useDebatePlayback(
     refreshedSlotsRef.current.clear();
 
     Promise.all([
-      getRecordingPlaybackUrlRef.current({ debateId: debate.id, filename: slot1RecordingFilename }),
-      getRecordingPlaybackUrlRef.current({ debateId: debate.id, filename: slot2RecordingFilename }),
+      recordingUrlsRef.current.lookup({ debateId: debate.id, filename: slot1RecordingFilename }),
+      recordingUrlsRef.current.lookup({ debateId: debate.id, filename: slot2RecordingFilename }),
     ])
       .then(([slot1Result, slot2Result]) => {
         // Cancelled mid-flight: commit nothing and leave the key unclaimed so the next run
@@ -453,7 +528,8 @@ export function useDebatePlayback(
         const slot2 = slot2Result.url;
 
         fetchedForRef.current = recordingsKey;
-        urlsSignedAtRef.current = Date.now();
+        needsPrepositionRef.current = true;
+        urlsCommittedAtRef.current = Date.now();
         setUrls({ slot1, slot2 });
       })
       .catch(caught => {
@@ -506,7 +582,8 @@ export function useDebatePlayback(
       refreshedSlotsRef.current.add(slot);
 
       try {
-        const { url } = await getRecordingPlaybackUrlRef.current({ debateId: debate.id, filename });
+        // `refresh`, never the cached `lookup`: the cached URL is the one suspected of being dead.
+        const { url } = await recordingUrlsRef.current.refresh({ debateId: debate.id, filename });
         // Merged rather than replaced: the other slot's URL is in use and is not ours to touch.
         setUrls(current =>
           current[slot === 1 ? 'slot1' : 'slot2'] === url
@@ -520,37 +597,71 @@ export function useDebatePlayback(
     [debate.id, slot1RecordingFilename, slot2RecordingFilename]
   );
 
-  // Layout effect so a stale URL is never painted into a <video> between re-attach and re-sign.
-  React.useLayoutEffect(() => {
-    const signedAt = urlsSignedAtRef.current;
-    if (!mediaAttached || signedAt === null || Date.now() - signedAt < RECORDING_URL_REUSE_MS) return;
+  // While released, mark the held URLs lapsed once they reach the reuse window. Rechecked when the
+  // page becomes visible, since background tabs throttle the timer.
+  React.useEffect(() => {
+    const committedAt = urlsCommittedAtRef.current;
+    if (mediaAttached || committedAt === null) return;
+    setResignAttempt(0);
+    const check = () => {
+      if (Date.now() - committedAt >= RECORDING_URL_REUSE_MS) setUrlsLapsed(true);
+    };
+    const timer = setTimeout(check, Math.max(0, committedAt + RECORDING_URL_REUSE_MS - Date.now()));
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, [mediaAttached, debate.id]);
+
+  // Re-attached with lapsed URLs: re-sign both (uncached) before the player renders the elements.
+  // A lapsed URL is never mounted: failures retry, then surface the load error with media detached.
+  React.useEffect(() => {
+    if (!mediaAttached || !urlsLapsed) return;
     if (!slot1RecordingFilename || !slot2RecordingFilename) return;
 
     let cancelled = false;
-    setResigningUrls(true);
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     Promise.all([
-      getRecordingPlaybackUrlRef.current({ debateId: debate.id, filename: slot1RecordingFilename }),
-      getRecordingPlaybackUrlRef.current({ debateId: debate.id, filename: slot2RecordingFilename }),
+      recordingUrlsRef.current.refresh({ debateId: debate.id, filename: slot1RecordingFilename }),
+      recordingUrlsRef.current.refresh({ debateId: debate.id, filename: slot2RecordingFilename }),
     ])
       .then(([slot1Result, slot2Result]) => {
         if (cancelled) return;
-        urlsSignedAtRef.current = Date.now();
+        urlsCommittedAtRef.current = Date.now();
         // Fresh signatures earn a fresh re-sign budget for the tiles.
         refreshedSlotsRef.current.clear();
         setUrls({ slot1: slot1Result.url, slot2: slot2Result.url });
+        setResignAttempt(0);
+        setError(null);
+        setUrlsLapsed(false);
       })
-      .catch(() => {
-        // Fall back to the held URLs; the tile's own recovery re-signs if they have lapsed.
-      })
-      .finally(() => {
-        if (!cancelled) setResigningUrls(false);
+      .catch(caught => {
+        if (cancelled) return;
+        if (resignAttempt < MAX_RESIGN_RETRIES) {
+          retryTimer = setTimeout(() => setResignAttempt(attempt => attempt + 1), RESIGN_RETRY_DELAY_MS);
+          return;
+        }
+        setError(caught instanceof Error ? caught.message : 'Could not load recordings.');
       });
 
     return () => {
       cancelled = true;
-      setResigningUrls(false);
+      if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [mediaAttached, debate.id, slot1RecordingFilename, slot2RecordingFilename]);
+  }, [mediaAttached, urlsLapsed, resignAttempt, debate.id, slot1RecordingFilename, slot2RecordingFilename]);
+
+  // Reaching the card (active or preloading) gives a re-sign that ran out of retries another go.
+  React.useEffect(() => {
+    if (enabled) setResignAttempt(0);
+  }, [enabled]);
+
+  // Re-attached elements are new and start at 0, so the pair is pre-seeked again before it plays.
+  const wasAttachedRef = React.useRef(mediaAttached);
+  React.useEffect(() => {
+    if (mediaAttached && !wasAttachedRef.current) needsPrepositionRef.current = true;
+    wasAttachedRef.current = mediaAttached;
+  }, [mediaAttached]);
 
   const videos = React.useCallback(
     () => [slot1VideoRef.current, slot2VideoRef.current].filter((video): video is HTMLVideoElement => video !== null),
@@ -580,8 +691,8 @@ export function useDebatePlayback(
       const primaryVideo = slot1VideoRef.current;
       const secondaryVideo = slot2VideoRef.current;
       if (!primaryVideo || !secondaryVideo) return false;
-      primaryVideo.currentTime = Math.max(0, playhead - offsets.slot1);
-      secondaryVideo.currentTime = Math.max(0, playhead - offsets.slot2);
+      moveTo(primaryVideo, Math.max(0, playhead - offsets.slot1));
+      moveTo(secondaryVideo, Math.max(0, playhead - offsets.slot2));
       secondaryVideo.playbackRate = 1;
       noteDeliberateSeek();
       // This *is* the debate's position now — a scrub backwards must not be dragged forward by
@@ -598,6 +709,30 @@ export function useDebatePlayback(
     const pendingSeekSeconds = pendingSeekSecondsRef.current;
     if (pendingSeekSeconds !== null && seekVideosTo(pendingSeekSeconds)) {
       pendingSeekSecondsRef.current = null;
+      // A deliberate position is where playback will start from, so it is the preposition too.
+      needsPrepositionRef.current = false;
+    }
+
+    // See `needsPrepositionRef`. Only for a pair nothing has started or moved yet, and only once
+    // both know their shape: before `HAVE_METADATA` a seek has nothing to land on.
+    if (
+      needsPrepositionRef.current &&
+      primaryVideo &&
+      secondaryVideo &&
+      primaryVideo.paused &&
+      secondaryVideo.paused &&
+      primaryVideo.readyState >= HTMLMediaElement.HAVE_METADATA &&
+      secondaryVideo.readyState >= HTMLMediaElement.HAVE_METADATA
+    ) {
+      needsPrepositionRef.current = false;
+      // Exactly the target `resumeBoth` will compute for this pair, so the resume finds both
+      // elements already there.
+      seekVideosTo(
+        clampSeconds(
+          pairPlayhead(primaryVideo, secondaryVideo, offsets, lastRunningPlayheadRef.current).seconds,
+          timelineSeconds
+        )
+      );
     }
 
     // Hoisted above the playhead read, which depends on it: off screen, which element's clock
@@ -824,6 +959,8 @@ export function useDebatePlayback(
       // awaiting, so two overlapping activations cannot both write state.
       const generation = ++resumeGenerationRef.current;
       const debateGeneration = debateGenerationRef.current;
+      // The resume positions the pair itself from here on.
+      needsPrepositionRef.current = false;
       setError(null);
       // Realign the pair so a resume can't leave the recordings drifting. Off the *running*
       // element's clock, not slot 1's unconditionally: a resume on return from a backgrounded tab
@@ -1084,6 +1221,7 @@ export function useDebatePlayback(
   const seekBoth = React.useCallback(
     (seconds: number) => {
       const nextTime = clampSeconds(seconds, timelineSeconds);
+      needsPrepositionRef.current = false;
       pendingSeekSecondsRef.current = nextTime;
       if (seekVideosTo(nextTime)) pendingSeekSecondsRef.current = null;
       setPlayheadSeconds(nextTime);
@@ -1267,15 +1405,17 @@ export function useDebatePlayback(
   }, [playbackEnded, resumeBoth]);
 
   return {
+    /** Held URLs lapsed while released and are being re-signed; render no <video> meanwhile. */
+    urlsLapsed,
     slot1VideoRef,
     slot2VideoRef,
     slot1Participant,
     slot2Participant,
     urls,
-    /** Held URLs are being re-signed after a long release; render the placeholder meanwhile. */
-    resigningUrls,
-    ready,
-    error,
+    // A debate that cannot be timed is never ready, so nothing autoplays it on a zero-length
+    // timeline; `error` carries the reason to the card.
+    ready: ready && !timingUnavailable,
+    error: error ?? timingError,
     playing,
     userPaused,
     autoplayBlocked,

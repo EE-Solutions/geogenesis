@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { capture } from '~/core/analytics';
+import { type AnalyticsEventName, capture } from '~/core/analytics';
 
 import type { Debate } from './api';
 import { createPlaybackMeasurement } from './playback-analytics';
@@ -17,6 +17,11 @@ export function usePlaybackAnalytics(
   mediaAttached = true
 ) {
   const playbackInstance = React.useRef(crypto.randomUUID());
+  // Which media this instance has already reported exposed, so re-binding to re-attached elements
+  // doesn't report it again under the same `exposure_id`.
+  const exposedFor = React.useRef<string | null>(null);
+  // Interval numbering continues across re-binds for the same media, like the exposure latch.
+  const intervalSequence = React.useRef({ key: '', count: 0 });
   const elementRef = React.useRef<HTMLDivElement>(null);
   const latest = React.useRef({ active, controller });
   latest.current = { active, controller };
@@ -50,7 +55,8 @@ export function usePlaybackAnalytics(
       return;
     const instance = playbackInstance.current;
     let visible = false;
-    let exposed = false;
+    const exposureKey = `${debate.id}|${mediaVersion}|${offset}`;
+    let exposed = exposedFor.current === exposureKey;
     let visibleSince: number | null = null;
     let disposed = false;
     let pageHidden = false;
@@ -62,14 +68,17 @@ export function usePlaybackAnalytics(
       playback_instance_id: instance,
       presentation_instance_id: instance,
     };
-    const emit = (event: string, properties: Record<string, unknown>) => {
+    const emit = (event: AnalyticsEventName, properties: Record<string, unknown>) => {
       try {
         capture(event, { ...context, ...properties });
       } catch {
         /* Playback stays usable. */
       }
     };
-    const clock = createPlaybackMeasurement(properties => emit('debate_playback_interval', properties));
+    if (intervalSequence.current.key !== exposureKey) intervalSequence.current = { key: exposureKey, count: 0 };
+    const clock = createPlaybackMeasurement(properties =>
+      emit('debate_playback_interval', { ...properties, interval_sequence: ++intervalSequence.current.count })
+    );
     const foreground = () => document.visibilityState === 'visible' && document.hasFocus();
     const tick = () => {
       if (disposed) return;
@@ -82,6 +91,7 @@ export function usePlaybackAnalytics(
       else if (visibleSince === null) visibleSince = now;
       else if (!exposed && now - visibleSince >= 1000) {
         exposed = true;
+        exposedFor.current = exposureKey;
         emit('debate_exposed', { exposure_id: instance, visibility_rule: 'player-60pct-1s-v1' });
       }
       clock.sample({

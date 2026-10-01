@@ -11,6 +11,7 @@ import { capture } from '~/core/analytics';
 import { CLAIM_TYPE_ID, TOPICS_PROPERTY_ID } from '~/core/claims/ontology';
 import { type Debate, GeoChatRequestError } from '~/core/debates/api';
 import type { DebatePageFeedState } from '~/core/debates/debate-page-outcome';
+import { isRemovedDebateAnswer } from '~/core/debates/debate-removal';
 import { useDebate, useProcessedVideoDebateIds, useSpaceDebates } from '~/core/debates/hooks';
 import { isWatchableDebate } from '~/core/debates/playback-utils';
 import { type DebatePageOutcome, useDebatePageOutcome } from '~/core/debates/use-debate-page-outcome';
@@ -30,6 +31,7 @@ import { EntityCommentsPanel } from '~/partials/comments/entity-comments-panel';
 import { DebateClaimsPanel } from './debate-claims-panel';
 import { DebateFeedPlayer } from './debate-feed-player';
 import { DebateInteractionBar } from './debate-interaction-bar';
+import { DebateOverflowMenu } from './debate-overflow-menu';
 import { DebateScrollHint, scrollHintBounceProps, useDebateScrollHint } from './debate-scroll-hint';
 import { useLineClampOverflow } from './line-clamp-overflow';
 import { DebateShareDialog } from './share-dialog';
@@ -38,6 +40,8 @@ import { useDebatesBestOrder } from './use-debates-best-order';
 import { debateFullscreenActiveAtom } from '~/atoms';
 
 const PAGE_SIZE = 5;
+/** How many cards past the active one open their recordings. See the `preload` prop below. */
+const PRELOAD_AHEAD = 2;
 const DEBATE_COLUMN_STYLE = {
   // Grow or shrink the media with the viewport while reserving the navbar,
   // claim title, media gap, and vertical breathing room.
@@ -49,6 +53,7 @@ export function DebatesBrowseFeed({
   initialDebateId,
   initialSeekSeconds = null,
   fallback,
+  removedView,
 }: {
   spaceId: string;
   initialDebateId?: string;
@@ -62,6 +67,13 @@ export function DebatesBrowseFeed({
   initialSeekSeconds?: number | null;
   /** Rendered instead of the feed when {@link initialDebateId} can't be resolved in this space. */
   fallback?: React.ReactNode;
+  /**
+   * Rendered instead of {@link fallback} when geo-chat says the anchored debate was removed
+   * (GEO-2785). The entity page usually learns that on the server and never mounts the feed, but a
+   * debate removed after the page rendered — or while the server-side check failed open — lands
+   * here, and the plain entity page is the one thing a removed debate must not fall back to.
+   */
+  removedView?: React.ReactNode;
 }) {
   const debatesQuery = useSpaceDebates(spaceId, true);
   const pageOutcome = useDebatePageOutcome(initialDebateId);
@@ -214,6 +226,12 @@ export function DebatesBrowseFeed({
   // for a debate that is deliberately gone, so it falls through to `anchorMissing` and the
   // caller's fallback view instead.
   const anchorGone = anchorQuery.error instanceof GeoChatRequestError && anchorQuery.error.status === 404;
+  // Of those, the one that means "removed": geo-chat's own `debate_not_found` for an id it minted.
+  const anchorRemoved =
+    anchorGone &&
+    initialDebateId != null &&
+    anchorQuery.error instanceof GeoChatRequestError &&
+    isRemovedDebateAnswer(initialDebateId, anchorQuery.error.status, anchorQuery.error.code);
 
   // An anchor absent after a failed lookup is *unknown*, not missing: falling
   // back would misread a transient readiness/query error as "this debate has no
@@ -254,7 +272,8 @@ export function DebatesBrowseFeed({
   // whose route `Main` can't recognise as full-width — drops its page chrome. Not set on the
   // fallback path, where an ordinary entity page renders and does want that chrome. A layout
   // effect so the padded layout is never painted, only to snap away a frame later.
-  const rendersFeed = !(anchorMissing && fallback != null);
+  const showsRemovedView = anchorMissing && anchorRemoved && removedView != null;
+  const rendersFeed = !(anchorMissing && fallback != null) && !showsRemovedView;
   const setDebateFullscreenActive = useSetAtom(debateFullscreenActiveAtom);
   React.useLayoutEffect(() => {
     if (!rendersFeed) return;
@@ -297,8 +316,9 @@ export function DebatesBrowseFeed({
   const pageFeedState: DebatePageFeedState = anchorMissing
     ? {
         kind: 'unavailable',
-        detail:
-          anchorGone || !anchorSource
+        detail: anchorRemoved
+          ? 'removed'
+          : anchorGone || !anchorSource
             ? 'not_found'
             : !isWatchableDebate(anchorSource)
               ? 'not_watchable'
@@ -327,6 +347,9 @@ export function DebatesBrowseFeed({
   }, [pageOutcome, pageFeedStateKey]);
 
   // Runs after all hooks so the early return never skips one.
+  if (showsRemovedView) {
+    return <>{removedView}</>;
+  }
   if (anchorMissing && fallback != null) {
     return <>{fallback}</>;
   }
@@ -363,15 +386,22 @@ export function DebatesBrowseFeed({
           onPlaybackState={
             initialDebateId != null && ID.equals(debate.id, initialDebateId) ? pageOutcome?.player : undefined
           }
-          // Resolve the NEXT debate's recordings while the viewer is still on this one. Each
+          // Resolve the next debates' recordings while the viewer is still on this one. Each
           // debate needs two signed URLs, and until they land the player shows "Loading…"
           // instead of a video, which is what makes arriving at a card feel glitchy
-          // (GEO-2895). Only one ahead — the feed is vertical and one-at-a-time, so a wider
-          // window would fetch recordings most viewers never reach.
-          preload={activeIndex >= 0 && index === activeIndex + 1}
-          // Cards stay mounted as the feed grows, so without this every debate the viewer has
-          // passed keeps two loaded <video> elements for the life of the page (GEO-3067).
-          releaseMedia={activeIndex >= 0 && Math.abs(index - activeIndex) > 1}
+          // (GEO-2895).
+          //
+          // Two ahead for the URLs and headers, one ahead for the data (GEO-2965). The active
+          // card now waits until both of its recordings can play, so a card reached cold is a
+          // card that waits — and a quick double swipe used to land exactly there, on a card
+          // nothing had opened. Headers are cheap; buffering is not, so only the very next card
+          // buffers, and nothing further than two ahead is touched at all.
+          preload={activeIndex >= 0 && index > activeIndex && index <= activeIndex + PRELOAD_AHEAD}
+          buffer={activeIndex >= 0 && index === activeIndex + 1}
+          // Cards stay mounted as the feed grows, so everything outside one behind to the preload
+          // window ahead releases its <video> elements (GEO-3067).
+          // With no active card (a refetch dropped it), everything stays released until one is chosen.
+          releaseMedia={activeIndex < 0 || index < activeIndex - 1 || index > activeIndex + PRELOAD_AHEAD}
           root={scrollEl}
           // Only the debate the viewer is looking at carries the nudge and lifts with it.
           scrollHint={index === 0 ? scrollHint : null}
@@ -443,6 +473,7 @@ function DebateFeedItem({
   active,
   initialSeekSeconds,
   preload,
+  buffer,
   releaseMedia,
   root,
   scrollHint,
@@ -460,6 +491,8 @@ function DebateFeedItem({
   active: boolean;
   initialSeekSeconds: number | null;
   preload: boolean;
+  /** Buffer the recordings too — the card after the active one. See `DebateFeedPlayer`. */
+  buffer: boolean;
   releaseMedia: boolean;
   root: HTMLElement | null;
   scrollHint: { isVisible: boolean; isLeaving: boolean } | null;
@@ -543,6 +576,7 @@ function DebateFeedItem({
               debate={debate}
               active={active}
               preload={preload}
+              buffer={buffer}
               releaseMedia={releaseMedia}
               initialSeekSeconds={initialSeekSeconds}
               onOpenClaims={onOpenClaims}
@@ -553,7 +587,11 @@ function DebateFeedItem({
           {/* Mobile: horizontal bar below the videos. Wrapper controls display so
               it doesn't collide with the bar's own `flex`. */}
           <div className="mt-3 hidden md:block">
-            <DebateInteractionBar orientation="horizontal" {...interactionProps} />
+            <DebateInteractionBar
+              orientation="horizontal"
+              {...interactionProps}
+              overflow={<DebateOverflowMenu debate={debate} variant="pill" />}
+            />
           </div>
           {/* `top-full` hangs it just below the debate without taking part in the column's
               height, which the media sizing has no room to spare for. */}
@@ -563,7 +601,11 @@ function DebateFeedItem({
         </div>
         {/* Desktop: vertical rail to the right of the videos. */}
         <div className="flex flex-col justify-end md:hidden">
-          <DebateInteractionBar orientation="vertical" {...interactionProps} />
+          <DebateInteractionBar
+            orientation="vertical"
+            {...interactionProps}
+            overflow={<DebateOverflowMenu debate={debate} variant="circle" />}
+          />
         </div>
       </div>
       <DebateShareDialog

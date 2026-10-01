@@ -1,7 +1,13 @@
+import { readAnalyticsContext } from './analytics-context';
 import { equals } from './id/normalize';
 
 /** Shared, text-free attribution contract. IDs refer to graph entities, never labels. */
 export const ACTION_COMPONENTS = [
+  'navbar',
+  'sign_in_prompt',
+  'sign_in_deep_link',
+  'invite_link',
+  'explore_email_capture',
   'entity_vote_buttons',
   'claim_position_control',
   'winner_vote_button',
@@ -46,6 +52,7 @@ export type ActionContext = {
   page_path: string;
   page_type: string;
   page_view_id: string;
+  auth_attempt_id?: string;
   action_session_id?: string;
   action_anonymous_id?: string;
   page_entity_id?: string;
@@ -86,6 +93,7 @@ export const ACTION_CONTEXT_FIELDS = [
   'playback_position_ms',
   'debate_id',
   'variant',
+  'auth_attempt_id',
   'action_session_id',
   'action_anonymous_id',
 ] as const satisfies readonly (keyof ActionContext)[];
@@ -167,13 +175,7 @@ export function snapshotActionContext(
   overrides: ActionScope = {},
   options: { scopeDepth?: number; ignoreEventContext?: boolean } = {}
 ): ActionContext {
-  const runtime = typeof window === 'undefined' ? undefined : (window.lytics ?? window.geoAnalytics);
-  let identity: Record<string, unknown> = {};
-  try {
-    identity = runtime?.getContext?.() ?? {};
-  } catch {
-    /* Telemetry cannot block an action. */
-  }
+  const identity = readAnalyticsContext();
   const event = options.ignoreEventContext ? undefined : eventContext;
   // A child scope (for example a claim row inside a panel) wins over its parent's
   // capture handler. A deeper clicked surface still reaches hooks built above it.

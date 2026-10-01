@@ -4,6 +4,11 @@ import { ID } from '~/core/id';
 import { isPendingPersonalSpaceId } from '~/core/state/pending-personal-space';
 
 import { notifyActionPageView, pageContext } from './action-context';
+import { analyticsRuntime, isAnalyticsEnabled } from './analytics-context';
+import type { AnalyticsEventName } from './analytics-events';
+import { withSignupVisitor } from './auth/signup-visitor';
+
+export type { AnalyticsEventName } from './analytics-events';
 
 export type AnalyticsProperties = Record<string, unknown>;
 
@@ -29,7 +34,7 @@ type GeoAnalyticsRuntime = {
   measurementContextRevision?: () => number;
   reconcileAnonymousIdentity?: () => void;
   bindIdentity?: (accessToken: string) => Promise<boolean>;
-  capture?: (eventName: string, properties?: AnalyticsProperties) => void;
+  capture?: (eventName: AnalyticsEventName, properties?: AnalyticsProperties) => void;
   identify?: (user: AnalyticsIdentity, traits?: AnalyticsProperties) => void;
   identifyUser?: (user: AnalyticsIdentity, traits?: AnalyticsProperties) => void;
   pageViewed?: (properties?: AnalyticsProperties) => void;
@@ -53,7 +58,7 @@ type GeoAnalyticsRuntime = {
 type PendingCall =
   | {
       method: 'capture';
-      eventName: string;
+      eventName: AnalyticsEventName;
       properties: AnalyticsProperties;
     }
   | {
@@ -128,18 +133,30 @@ declare global {
 }
 
 const appName = 'genesis';
-const analyticsScriptSrc = '/geo-analytics-997e25cb095f.js';
+const analyticsScriptSrc = '/geo-analytics-31a5b5b9901f.js';
 const collectorUrl = 'https://c.geobrowser.io';
 
 let internalAccount = false;
 let scriptRequested = false;
 let lastPageView: { key: string; timestamp: number } | null = null;
 const pendingCalls: PendingCall[] = [];
+// Calls wait here until the runtime script loads, which a blocker can prevent for the life of the
+// tab. Hard-bounded; identity calls displace events first, since later events rely on them.
+const MAX_PENDING_CALLS = 1000;
+const IDENTITY_METHODS = new Set<PendingCall['method']>([
+  'identifyUser',
+  'signedUp',
+  'loggedIn',
+  'sessionRestored',
+  'loggedOut',
+  'identityReset',
+  'reconcileAnonymousIdentity',
+]);
 
 // NEXT_PUBLIC_ prefix is required: this loader runs client-side, and Next only exposes
 // NEXT_PUBLIC_* env vars to the browser bundle. Set NEXT_PUBLIC_DISABLE_POSTHOG='1' to keep
 // analytics off (e.g. during local dev).
-export const isAnalyticsEnabled = process.env.NEXT_PUBLIC_DISABLE_POSTHOG !== '1';
+export { isAnalyticsEnabled } from './analytics-context';
 
 export function initAnalytics() {
   if (typeof window === 'undefined' || typeof document === 'undefined' || !isAnalyticsEnabled) {
@@ -182,7 +199,7 @@ export function initAnalytics() {
 
   const script = document.createElement('script');
   script.src = analyticsScriptSrc;
-  script.integrity = 'sha256-mX4lywlfzaZvz3Ac+ipLjcKka/FvaWakf9c664A8uOQ=';
+  script.integrity = 'sha256-MaW1uZAf0w48xaESpow8z2xJUZSXo4LWF5+GIPRv9lE=';
   script.crossOrigin = 'anonymous';
   script.defer = true;
   script.async = true;
@@ -191,7 +208,7 @@ export function initAnalytics() {
   document.head.appendChild(script);
 }
 
-export function capture(eventName: string, properties: AnalyticsProperties = {}) {
+export function capture(eventName: AnalyticsEventName, properties: AnalyticsProperties = {}) {
   // An attributed action may complete on another route. Explicit nulls also
   // prevent the runtime from filling absent page entities from that later route.
   const route = properties.page_view_id ? { page_entity_id: null, page_entity_type: null } : pageContext();
@@ -201,14 +218,7 @@ export function capture(eventName: string, properties: AnalyticsProperties = {})
     properties: {
       app: appName,
       ...route,
-      is_automated:
-        typeof navigator !== 'undefined' &&
-        (navigator.webdriver === true || /HeadlessChrome|PhantomJS/i.test(navigator.userAgent)),
-      is_test: process.env.NEXT_PUBLIC_IS_TEST_ENV === '1',
-      is_internal:
-        internalAccount ||
-        process.env.NEXT_PUBLIC_IS_TEST_ENV === '1' ||
-        (typeof window !== 'undefined' && !isProductionGenesisHost(window.location.hostname)),
+      ...trafficProperties(),
       ...properties,
     },
   });
@@ -559,6 +569,13 @@ function callOrQueue(call: PendingCall) {
     return;
   }
 
+  if (pendingCalls.length >= MAX_PENDING_CALLS) {
+    if (!IDENTITY_METHODS.has(call.method)) return;
+    // Room for an identity call comes from the oldest event, keeping the bound hard.
+    const evict = pendingCalls.findIndex(queued => !IDENTITY_METHODS.has(queued.method));
+    pendingCalls.splice(evict === -1 ? 0 : evict, 1);
+  }
+
   pendingCalls.push(call);
 }
 
@@ -683,7 +700,7 @@ function invokeRuntimeUnsafe(call: PendingCall) {
   }
 
   if (call.method === 'signedUp' && analytics.signedUp) {
-    analytics.signedUp(call.user, call.properties);
+    analytics.signedUp(call.user, withSignupVisitor(call.properties));
     return true;
   }
 
@@ -727,8 +744,17 @@ function invokeRuntimeUnsafe(call: PendingCall) {
   return false;
 }
 
-function analyticsRuntime() {
-  return window.lytics || window.geoAnalytics;
+function trafficProperties() {
+  return {
+    is_automated:
+      typeof navigator !== 'undefined' &&
+      (navigator.webdriver === true || /HeadlessChrome|PhantomJS/i.test(navigator.userAgent)),
+    is_test: process.env.NEXT_PUBLIC_IS_TEST_ENV === '1',
+    is_internal:
+      internalAccount ||
+      process.env.NEXT_PUBLIC_IS_TEST_ENV === '1' ||
+      (typeof window !== 'undefined' && !isProductionGenesisHost(window.location.hostname)),
+  };
 }
 
 function privyIdentityProperties(user: PrivyAnalyticsUser, properties: AnalyticsProperties = {}) {
@@ -740,6 +766,7 @@ function privyIdentityProperties(user: PrivyAnalyticsUser, properties: Analytics
     user_id: user.id,
     privy_user_id: user.id,
     auth_provider: 'privy',
+    ...trafficProperties(),
     privy_user_created_at: formatDate(user.createdAt),
     has_privy_email: Boolean(user.email),
     has_privy_phone: Boolean(user.phone),

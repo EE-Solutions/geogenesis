@@ -96,12 +96,14 @@ vi.mock('./debate-feed-player', async () => {
       debate,
       active,
       preload,
+      buffer,
       releaseMedia,
       onPlaybackState,
     }: {
       debate: Debate;
       active: boolean;
       preload?: boolean;
+      buffer?: boolean;
       releaseMedia?: boolean;
       onPlaybackState?: (state: typeof mocks.playerState) => void;
     }) => {
@@ -112,6 +114,7 @@ vi.mock('./debate-feed-player', async () => {
           data-testid={`player-${debate.id}`}
           data-active={active}
           data-preload={preload ? 'true' : 'false'}
+          data-buffer={buffer ? 'true' : 'false'}
           data-release-media={releaseMedia ? 'true' : 'false'}
         />
       );
@@ -132,6 +135,13 @@ vi.mock('./debate-claims-panel', () => ({
 }));
 vi.mock('./share-dialog', () => ({
   DebateShareDialog: () => null,
+}));
+// Its eligibility rules and dialog are covered by debate-overflow-menu.test.tsx; here it only has to
+// land in both of the bar's orientations.
+vi.mock('./debate-overflow-menu', () => ({
+  DebateOverflowMenu: ({ debate, variant }: { debate: Debate; variant: string }) => (
+    <div data-testid={`overflow-${variant}-${debate.id}`} />
+  ),
 }));
 vi.mock('~/partials/comments/entity-comments-panel', () => ({
   EntityCommentsPanel: ({ entityId }: { entityId: string }) => <div>Comments panel for {entityId}</div>,
@@ -449,6 +459,57 @@ describe('DebatesBrowseFeed layout and scroll nudge', () => {
     render(<DebatesBrowseFeed spaceId="space-1" initialDebateId="debate-99" fallback={<div>Entity page</div>} />);
 
     expect(screen.getByText('Entity page')).toBeInTheDocument();
+  });
+
+  // GEO-2785, after removal became a product action. geo-chat's own `debate_not_found` for an id it
+  // minted (UUIDv7) means removed, and a removed debate must not fall back to the raw entity page,
+  // which carries its video. The server usually catches this first; this is the path for a debate
+  // removed after the page rendered, or while the server's check failed open.
+  it('shows the removed view, not the entity page, for a removed geo-chat debate', () => {
+    const removedId = '01a0448a61d371018434a20fdadf6f97';
+    mocks.debates = [completedDebate('debate-1', 'In the window', '2026-07-02T00:01:10.000Z')];
+    mocks.anchorError = new GeoChatRequestError('debate was not found', 'debate_not_found', 404);
+
+    render(
+      <DebatesBrowseFeed
+        spaceId="space-1"
+        initialDebateId={removedId}
+        fallback={<div>Entity page</div>}
+        removedView={<div>Removed view</div>}
+      />
+    );
+
+    expect(screen.getByText('Removed view')).toBeInTheDocument();
+    expect(screen.queryByText('Entity page')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('player-debate-1')).not.toBeInTheDocument();
+  });
+
+  // Not every 404 is a removal: an id geo-chat never minted, or a 404 with no geo-chat code, keeps
+  // the fallback it always had.
+  it.each([
+    ['an id geo-chat did not mint', 'debate-99', 'debate_not_found'],
+    ['a 404 without geo-chat’s code', '01a0448a61d371018434a20fdadf6f97', null],
+  ])('keeps the entity page fallback for %s', (_, anchorId, code) => {
+    mocks.anchorError = new GeoChatRequestError('404 Not Found', code, 404);
+
+    render(
+      <DebatesBrowseFeed
+        spaceId="space-1"
+        initialDebateId={anchorId}
+        fallback={<div>Entity page</div>}
+        removedView={<div>Removed view</div>}
+      />
+    );
+
+    expect(screen.getByText('Entity page')).toBeInTheDocument();
+    expect(screen.queryByText('Removed view')).not.toBeInTheDocument();
+  });
+
+  it('puts the overflow menu in both orientations of the bar', () => {
+    render(<DebatesBrowseFeed spaceId="space-1" />);
+
+    expect(screen.getByTestId('overflow-pill-debate-1')).toBeInTheDocument();
+    expect(screen.getByTestId('overflow-circle-debate-1')).toBeInTheDocument();
   });
 
   // The contrast that makes the case above load-bearing: a transient failure is *unknown*, so it
@@ -857,23 +918,52 @@ describe('DebatesBrowseFeed — preloading the next debate (GEO-2895)', () => {
       id: el.getAttribute('data-testid'),
       active: el.getAttribute('data-active') === 'true',
       preload: el.getAttribute('data-preload') === 'true',
+      buffer: el.getAttribute('data-buffer') === 'true',
       releaseMedia: el.getAttribute('data-release-media') === 'true',
     }));
   }
 
-  it('preloads the debate immediately after the active one, and only that one', () => {
+  // Cards stay mounted as the viewer scrolls, so only one behind through the preload window ahead
+  // may hold loaded media (GEO-3067).
+  it('releases media outside one behind to the preload window ahead', () => {
+    mocks.debates = [
+      ...mocks.debates,
+      completedDebate('debate-4', 'Fourth claim', '2026-07-02T00:04:10.000Z'),
+      completedDebate('debate-5', 'Fifth claim', '2026-07-02T00:05:10.000Z'),
+      completedDebate('debate-6', 'Sixth claim', '2026-07-02T00:06:10.000Z'),
+    ];
     render(<DebatesBrowseFeed spaceId="space-1" />);
     const players = playersInRenderOrder();
     const activeIndex = players.findIndex(p => p.active);
 
     expect(activeIndex).toBeGreaterThanOrEqual(0);
-    expect(players[activeIndex + 1]?.preload).toBe(true);
+    players.forEach((p, i) => {
+      expect(p.releaseMedia).toBe(i < activeIndex - 1 || i > activeIndex + 2);
+      // Nothing the feed preloads is ever released.
+      if (p.preload || p.active) expect(p.releaseMedia).toBe(false);
+    });
+    expect(players.some(p => p.releaseMedia)).toBe(true);
+  });
 
-    // Every other card loads nothing: not the active one (already loading because it is
-    // active), and not two ahead — a vertical one-at-a-time feed would otherwise fetch
+  // GEO-2965 widened this from one ahead to two. The active card now holds until both of its
+  // recordings can play, so a card reached cold waits; a quick double swipe is how a viewer lands on
+  // one. Only the very next card buffers, because buffering is what costs bandwidth.
+  it('opens the two debates after the active one, and buffers only the next', () => {
+    mocks.debates = [...mocks.debates, completedDebate('debate-4', 'Fourth claim', '2026-07-02T00:04:10.000Z')];
+    render(<DebatesBrowseFeed spaceId="space-1" />);
+    const players = playersInRenderOrder();
+    const activeIndex = players.findIndex(p => p.active);
+
+    expect(activeIndex).toBeGreaterThanOrEqual(0);
+    expect(players.length).toBeGreaterThan(activeIndex + 3);
+    expect(players[activeIndex + 1]).toMatchObject({ preload: true, buffer: true });
+    expect(players[activeIndex + 2]).toMatchObject({ preload: true, buffer: false });
+
+    // Everything else loads nothing: not the active one (already loading because it is active),
+    // and nothing three or more ahead — a vertical one-at-a-time feed would otherwise fetch
     // recordings most viewers never reach.
     players.forEach((p, i) => {
-      if (i !== activeIndex + 1) expect(p.preload).toBe(false);
+      if (i !== activeIndex + 1 && i !== activeIndex + 2) expect(p).toMatchObject({ preload: false, buffer: false });
     });
   });
 
@@ -885,21 +975,6 @@ describe('DebatesBrowseFeed — preloading the next debate (GEO-2895)', () => {
     for (const p of players) {
       if (p.preload) expect(p.active).toBe(false);
     }
-  });
-
-  // Cards stay mounted as the viewer scrolls, so only a window around the active debate may hold
-  // loaded media (GEO-3067).
-  it('releases media on every card more than one away from the active debate', () => {
-    mocks.debates = [...mocks.debates, completedDebate('debate-4', 'Fourth claim', '2026-07-02T00:04:10.000Z')];
-    render(<DebatesBrowseFeed spaceId="space-1" />);
-    const players = playersInRenderOrder();
-    const activeIndex = players.findIndex(p => p.active);
-
-    expect(activeIndex).toBeGreaterThanOrEqual(0);
-    players.forEach((p, i) => {
-      expect(p.releaseMedia).toBe(Math.abs(i - activeIndex) > 1);
-    });
-    expect(players.some(p => p.releaseMedia)).toBe(true);
   });
 });
 
@@ -960,6 +1035,21 @@ describe('DebatesBrowseFeed visit outcome (GEO-3074)', () => {
     view.unmount();
 
     expect(outcomes()).toEqual([expect.objectContaining({ reason: 'unavailable', detail })]);
+  });
+
+  it('records a removed debate as unavailable with the removed detail', () => {
+    mocks.anchorError = new GeoChatRequestError('debate was not found', 'debate_not_found', 404);
+    const view = render(
+      <DebatesBrowseFeed
+        spaceId="space-1"
+        initialDebateId="01a0448a61d371018434a20fdadf6f97"
+        fallback={<div>Entity page</div>}
+        removedView={<div>Removed view</div>}
+      />
+    );
+    view.unmount();
+
+    expect(outcomes()).toEqual([expect.objectContaining({ reason: 'unavailable', detail: 'removed' })]);
   });
 
   it('records nothing on the Debates tab, which is not a visit to one debate', () => {

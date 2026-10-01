@@ -1272,6 +1272,58 @@ export async function getDebate(
   });
 }
 
+/** What `POST /debates/{id}/hide` and `/unhide` answer with: the debate's visibility afterwards. */
+export type DebateVisibilityResponse = {
+  debate_id: string;
+  hidden: boolean;
+  hidden_at: string | null;
+  /** Who hid it. Null when visible, or when an operator script hid it. */
+  hidden_by_user_id: string | null;
+  hidden_reason: string | null;
+};
+
+/** geo-chat's limit on a hide reason, in characters (`MAX_HIDE_REASON_CHARS`). */
+export const DEBATE_HIDE_REASON_MAX_CHARS = 500;
+
+/**
+ * Removes a completed debate from the product (GEO-2785): it leaves every listing, and every by-id
+ * read answers `debate_not_found`. geo-chat allows a participant or an editor of the debate's space,
+ * and refuses anyone else with `debate_visibility_forbidden`. Idempotent. A blank reason is sent as
+ * none, which is how geo-chat would read it anyway.
+ */
+export async function hideDebate(
+  debateId: string,
+  reason: string | null | undefined,
+  getPrivyIdentityToken: GetPrivyIdentityToken,
+  accountKey: string | null
+) {
+  const trimmed = reason?.trim();
+  return geoChatRequest<DebateVisibilityResponse>(`/debates/${debateId}/hide`, {
+    method: 'POST',
+    body: trimmed ? { reason: trimmed } : {},
+    auth: true,
+    getPrivyIdentityToken,
+    accountKey,
+  });
+}
+
+/**
+ * Restores a hidden debate. Narrower than {@link hideDebate}: a space editor may restore any, a
+ * participant only one they hid themselves. Idempotent.
+ */
+export async function unhideDebate(
+  debateId: string,
+  getPrivyIdentityToken: GetPrivyIdentityToken,
+  accountKey: string | null
+) {
+  return geoChatRequest<DebateVisibilityResponse>(`/debates/${debateId}/unhide`, {
+    method: 'POST',
+    auth: true,
+    getPrivyIdentityToken,
+    accountKey,
+  });
+}
+
 export async function getLiveKitToken(
   debateId: string,
   getPrivyIdentityToken: GetPrivyIdentityToken,
@@ -1546,7 +1598,8 @@ export async function rejectDebateChallenge(
  * -----------------------------------------------------------------------------------------------*/
 
 /** Why a room stopped accepting joins. A closed room is a tombstone, not a 404. */
-export type DebateRoomClosedReason = 'completed' | 'empty_idle' | 'no_show' | 'cancelled';
+/** `rescheduled`: the debate moved to a new time, and accepting it books a different room. */
+export type DebateRoomClosedReason = 'completed' | 'empty_idle' | 'no_show' | 'cancelled' | 'rescheduled';
 
 /**
  * May the viewer open this room right now. Carried in a 200 body rather than an HTTP status, so a
@@ -1732,9 +1785,13 @@ export async function createScheduledDebate(
 }
 
 /**
- * Moves a pending request to a new time. geo-chat flips who has to answer, so the other debater is
- * asked to accept the new time and emailed that it moved. It caps a request at five moves and
- * refuses one that is no longer pending, both as `409 reschedule_refused`.
+ * Moves a pending or accepted request to a new time. geo-chat flips who has to answer, so the other
+ * debater is asked to accept the new time and emailed that it moved. An accepted debate goes back
+ * to pending: its room closes and its time is freed, and accepting the new time books a new room.
+ *
+ * Refusals, all `409` except the last: `reschedule_refused` (five moves already, or declined,
+ * expired, cancelled or superseded), `debate_already_started` (someone has joined the room),
+ * `schedule_conflict` (the viewer already has a debate then), and `403 not_a_participant`.
  */
 export async function rescheduleScheduledDebate(
   requestId: string,
@@ -1761,6 +1818,26 @@ export async function respondToScheduledDebate(
   return geoChatRequest<ScheduledDebateResponseResult>(`/scheduled-debates/${requestId}/response`, {
     method: 'POST',
     body: { accepted },
+    auth: true,
+    getPrivyIdentityToken,
+    accountKey,
+  });
+}
+
+/**
+ * Calls a scheduled debate off (GEO-3093). While pending only whoever proposed the current time may
+ * withdraw it; once accepted either debater may. geo-chat closes the room as `cancelled`, frees the
+ * slot for both people and withdraws the calendar invite. It refuses with `409
+ * debate_already_started` once anyone has joined the room, and `409 request_not_cancellable` once the
+ * request is already resolved.
+ */
+export async function cancelScheduledDebate(
+  requestId: string,
+  getPrivyIdentityToken: GetPrivyIdentityToken,
+  accountKey: string | null
+) {
+  return geoChatRequest<ScheduledDebateRequest>(`/scheduled-debates/${requestId}/cancel`, {
+    method: 'POST',
     auth: true,
     getPrivyIdentityToken,
     accountKey,
